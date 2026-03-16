@@ -2,12 +2,12 @@
   "packageName": "Battery Monitor 2.0",
   "packageVersion": "2.8.4",
   "packageNamespace": "jdthomas24",
-  "sourceUrl": "https://raw.githubusercontent.com/jdthomas24/Hubitat-Apps/main/Battery%20Monitor%202.0/Raw%20Code",
+  "sourceUrl": "https://raw.githubusercontent.com/jdthomas24/Hubitat-Apps/main/packages/apps/jdthomas24/battery-monitor-2.0/Battery%20Monitor%202.0.json",
   "author": "Jason Thomas",
   "description": "Battery Monitor 2.0 for Hubitat — auto-discover battery devices, daily notifications, trends, and replacement history.",
   "category": "Convenience",
-  "documentationUrl": "https://github.com/jdthomas24/Hubitat-Apps/tree/main/Battery%20Monitor%202.0#readme",
-  "iconUrl": "https://raw.githubusercontent.com/jdthomas24/Hubitat-Apps/main/Battery%20Monitor%202.0/icon.png",
-  "iconX2Url": "https://raw.githubusercontent.com/jdthomas24/Hubitat-Apps/main/Battery%20Monitor%202.0/icon@2x.png",
+  "documentationUrl": "https://github.com/jdthomas24/Hubitat-Apps/tree/main/packages/apps/jdthomas24/battery-monitor-2.0#readme",
+  "iconUrl": "https://raw.githubusercontent.com/jdthomas24/Hubitat-Apps/main/packages/apps/jdthomas24/battery-monitor-2.0/icon.png",
+  "iconX2Url": "https://raw.githubusercontent.com/jdthomas24/Hubitat-Apps/main/packages/apps/jdthomas24/battery-monitor-2.0/icon@2x.png",
   "tags": ["battery", "monitor", "Hubitat", "auto-discovery", "notification"]
 }
