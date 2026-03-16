@@ -1,31 +1,13 @@
-**HPM PR Reviewer Checklist – Battery Monitor 2.0**
-
-App Metadata
-- Name: Battery Monitor 2.0
-- Namespace: jdthomas24
-- Version: 2.0
-- Category: Convenience
-- Author: Jdthomas24
-
-Functionality
-- Auto-discovery of battery devices implemented
-- Battery monitoring includes: health, drain, estimated days
-- Daily summary reports sorted by Critical, Good, Full
-- Battery trends tracked with note for insufficient events
-- Battery replacements tracked via Replacement page
-- Notifications configurable (push/device)
-
-HPM Compliance
-- JSON manifest present (Battery Monitor 2.0.json)
-- JSON points to valid GitHub raw URL
-- Required capabilities listed (Battery, Notification)
-- Pages defined: mainPage, summaryPage, trendsPage, historyPage
-- Notes included in JSON for end-users
-- Versioning correct for future updates
-
-Other Notes
-- README.md included with installation and usage instructions
-- No license specified (per author decision)
-- App tested to work with Hubitat HPM installation
-- Future updates will appear in HPM when "packageVersion" is incremented
-
+{
+  "packageName": "Battery Monitor 2.0",
+  "packageVersion": "2.8.4",
+  "packageNamespace": "jdthomas24",
+  "sourceUrl": "https://raw.githubusercontent.com/jdthomas24/Hubitat-Apps/main/Battery%20Monitor%202.0/Raw%20Code",
+  "author": "Jason Thomas",
+  "description": "Battery Monitor 2.0 for Hubitat — auto-discover battery devices, daily notifications, trends, and replacement history.",
+  "category": "Convenience",
+  "documentationUrl": "https://github.com/jdthomas24/Hubitat-Apps/tree/main/Battery%20Monitor%202.0#readme",
+  "iconUrl": "https://raw.githubusercontent.com/jdthomas24/Hubitat-Apps/main/Battery%20Monitor%202.0/icon.png",
+  "iconX2Url": "https://raw.githubusercontent.com/jdthomas24/Hubitat-Apps/main/Battery%20Monitor%202.0/icon@2x.png",
+  "tags": ["battery", "monitor", "Hubitat", "auto-discovery", "notification"]
+}
