@@ -376,7 +376,6 @@ def prefSettings(params) {
 				}
 
 				paragraph "<hr>"
-
 				// ── Method A: Personal Access Token ───────────
 				paragraph "<b>Method A — Personal Access Token (PAT)</b>"
 				paragraph (
@@ -406,13 +405,11 @@ def prefSettings(params) {
 				// ── Method B: Device Flow OAuth ────────────────
 				paragraph "<b>Method B — GitHub OAuth (Device Flow)</b>"
 				paragraph (
+					"Generate an OAuth Client ID at <a href='github.com/settings/applications/new' " +
+					"target='_blank'>github.com/settings/applications/new</a>." +
 					"No token needed — GitHub will show you a short code to enter " +
 					"on their website. Works on any browser, even on another device."
 				)
-				input "githubOAuthClientId", "string",
-					title: "GitHub OAuth App Client ID (for Device Flow only)",
-					description: "From github.com/settings/applications/new",
-					required: false
 
 				if (!state.githubDeviceFlowActive) {
 					input "btnGitHubStartDeviceFlow", "button",
