@@ -9,6 +9,7 @@
  *
  *
  *
+ *    cyocko87 v1.9.11  Added GitHub Authentication (PAT + Device Flow OAuth) to Settings page.
  *    mavrrick 1.9.10   Enhanced file processing to allow for a binary file download when new tag is specified and "binary" is used.
  *    csteele  v1.9.9   UpgradeApp() moved to the Top to remediate HPM crashing during Upgrade of itself due to the methods moving post-upgrade.
  *                         Replaced "Fast Search" algorithm to also use fuzzy, thus eliminating the need for two choices. Delete Azure query.
@@ -63,12 +64,12 @@
 	def getThisCopyright(){"&copy; 2020 Dominick Meglio"}
 
 definition(
-	name: "Hubitat Package Manager",
+	name: "HPM - Hubitat Package Manager (Testing)",
 	namespace: "dcm.hpm",
 	author: "Dominick Meglio",
 	description: "Provides a utility to maintain the apps and drivers on your Hubitat making both installation and updates easier",
 	category: "My Apps",
-	importUrl: "https://raw.githubusercontent.com/HubitatCommunity/hubitatpackagemanager/main/apps/Package_Manager.groovy",
+	importUrl: "https://raw.githubusercontent.com/cyocko87/Hubitat-Package-Manager/main/apps/Package_Manager.groovy",
 	documentationLink: "https://hubitatpackagemanager.hubitatcommunity.com/",
 	iconUrl: "",
 	iconX2Url: "",
@@ -106,6 +107,8 @@ preferences {
 	page(name: "prefPkgUnMatch")
 	page(name: "prefPkgUnMatchVerify")
 	page(name: "prefPkgUnMatchComplete")
+	page(name: "prefGitHubAuth")
+	page(name: "prefGitHubDeviceFlow")
 }
 
 import groovy.transform.Field
@@ -143,6 +146,11 @@ import java.util.regex.Matcher
 
 @Field static List iconTags = ["ZWave", "Zigbee", "Cloud", "LAN", "Matter"]
 @Field static String srchSrcTxt = ""
+
+@Field static String  githubDeviceCode        = ""
+@Field static String  githubDeviceUserUrl     = ""
+@Field static Long    githubDevicePollExpiry  = 0L
+@Field static Integer githubDevicePollInterval = 5
 
 // method moved to the Top to possibly remediate HPM crashing during Upgrade of itself.
 def upgradeApp(id,appCode) {
@@ -212,6 +220,20 @@ def appButtonHandler(btn) {
 			break
 		case "btnUnMatch":
 			state.UnMatch = true
+			break
+		case "btnGitHubClearToken":
+			state.remove("githubToken")
+			state.remove("githubTokenType")
+			state.remove("githubTokenUser")
+			log.info "HPM: GitHub token cleared."
+			break
+		case "btnGitHubStartDeviceFlow":
+			state.githubDeviceFlowActive = true
+			break
+		case "btnGitHubCancelDeviceFlow":
+			state.remove("githubDeviceFlowActive")
+			githubDeviceCode    = ""
+			githubDeviceUserUrl = ""
 			break
 		case ~/^btnDeleteRepo(\d+)/:
 			deleteCustomRepository(Matcher.lastMatcher[0][1].toInteger())
@@ -329,6 +351,112 @@ def prefSettings(params) {
 					paragraph "Please click Done and restart the app to continue."
 			}
 			if (!state.firstRun) {
+			section ("<b>GitHub Authentication</b>") {
+				paragraph (
+					"Authenticating with GitHub increases the API rate limit from " +
+					"60 to 5,000 requests/hour and enables access to <b>private repos</b> " +
+					"you own. Choose either method below."
+				)
+
+				// ── Status banner ─────────────────────────────
+				if (state.githubToken) {
+					def maskedToken = state.githubToken.take(4) + "****" +
+					                  state.githubToken.substring(state.githubToken.size() - 4)
+					def tokenTypeLabel = state.githubTokenType == "pat" ?
+						"Personal Access Token" : "OAuth (Device Flow)"
+					paragraph (
+						"<span style='color:green;font-weight:bold;'>✓ Authenticated</span> " +
+						"via ${tokenTypeLabel}" +
+						(state.githubTokenUser ? " as <b>${state.githubTokenUser}</b>" : "") +
+						"<br>Token: <code>${maskedToken}</code>"
+					)
+					input "btnGitHubClearToken", "button", title: "Disconnect GitHub", width: 3
+				} else {
+					paragraph "<span style='color:#cc6600;font-weight:bold;'>⚠ Not authenticated</span> — using unauthenticated API (60 req/hr limit, public repos only)."
+				}
+
+				paragraph "<hr>"
+
+				// ── Method A: Personal Access Token ───────────
+				paragraph "<b>Method A — Personal Access Token (PAT)</b>"
+				paragraph (
+					"Generate a token at <a href='https://github.com/settings/tokens/new' " +
+					"target='_blank'>github.com/settings/tokens/new</a>. " +
+					"Select scopes: <code>repo</code> (for private repos) or leave all " +
+					"scopes unchecked if you only need higher rate limits on public repos."
+				)
+				input "githubPAT", "password",
+					title: "Paste Personal Access Token here",
+					description: "ghp_xxxxxxxxxxxxxxxxxxxx",
+					required: false,
+					submitOnChange: true
+
+				if (githubPAT && githubPAT.length() > 10) {
+					def testResult = githubVerifyAndSavePAT(githubPAT)
+					if (testResult.success) {
+						app.updateSetting("githubPAT", [value:"", type:"password"])
+						paragraph "<span style='color:green;'>✓ Token accepted. Logged in as <b>${testResult.user}</b>.</span>"
+					} else {
+						paragraph "<span style='color:red;'>✗ Token validation failed: ${testResult.error}</span>"
+					}
+				}
+
+				paragraph "<hr>"
+
+				// ── Method B: Device Flow OAuth ────────────────
+				paragraph "<b>Method B — GitHub OAuth (Device Flow)</b>"
+				paragraph (
+					"No token needed — GitHub will show you a short code to enter " +
+					"on their website. Works on any browser, even on another device."
+				)
+				input "githubOAuthClientId", "string",
+					title: "GitHub OAuth App Client ID (for Device Flow only)",
+					description: "From github.com/settings/applications/new",
+					required: false
+
+				if (!state.githubDeviceFlowActive) {
+					input "btnGitHubStartDeviceFlow", "button",
+						title: "Connect via GitHub OAuth", width: 4
+				} else {
+					def flowState = githubRunDeviceFlow()
+
+					if (flowState.status == "pending") {
+						paragraph (
+							"<b>Step 1:</b> Open <a href='${flowState.verificationUri}' " +
+							"target='_blank'><b>${flowState.verificationUri}</b></a> " +
+							"in any browser.<br>" +
+							"<b>Step 2:</b> Enter code: " +
+							"<span style='font-size:1.4em;font-weight:bold;letter-spacing:4px;" +
+							"color:#0366d6;'>${flowState.userCode}</span><br>" +
+							"<b>Step 3:</b> This page will refresh automatically every " +
+							"${flowState.interval}s until you approve."
+						)
+						paragraph "⏳ Waiting for GitHub authorization…"
+						input "btnGitHubCancelDeviceFlow", "button",
+							title: "Cancel", width: 3
+						app.updateSetting("_ghPollTick",
+							[value: now().toString(), type:"string"])
+
+					} else if (flowState.status == "complete") {
+						state.remove("githubDeviceFlowActive")
+						paragraph "<span style='color:green;font-weight:bold;'>✓ GitHub OAuth complete! Logged in as <b>${flowState.user}</b>.</span>"
+
+					} else if (flowState.status == "expired") {
+						state.remove("githubDeviceFlowActive")
+						paragraph "<span style='color:red;'>✗ Authorization timed out. Please try again.</span>"
+						input "btnGitHubStartDeviceFlow", "button",
+							title: "Try Again", width: 3
+
+					} else if (flowState.status == "error") {
+						state.remove("githubDeviceFlowActive")
+						paragraph "<span style='color:red;'>✗ Error: ${flowState.error}</span>"
+						input "btnGitHubStartDeviceFlow", "button",
+							title: "Try Again", width: 3
+					}
+				}
+				paragraph "<hr>"
+			}
+			
 				section ("<b>General</b>") {
 					input "debugOutput", "bool", title: "Enable debug logging", defaultValue: true
 					input "txtEnable", "bool", title: "Enable text logging", defaultValue: true
@@ -3201,6 +3329,168 @@ def getInstalledOptionalDrivers(manifest) {
 	return result
 }
 
+/**
+ * Injects the GitHub Authorization header into an httpGet/httpPost
+ * params map when the URL targets GitHub and a token is stored.
+ * Safe to call for any URL — no-op for non-GitHub targets.
+ */
+def githubInjectAuth(Map params) {
+	def token = state.githubToken
+	if (!token) return
+	def url = params.uri ?: ""
+	if (!(url.contains("raw.githubusercontent.com") ||
+	      url.contains("api.github.com") ||
+	      url.contains("github.com"))) return
+
+	if (params.headers == null) params.headers = [:]
+	params.headers["Authorization"] = "Bearer ${token}"
+	if (url.contains("api.github.com"))
+		params.headers["X-GitHub-Api-Version"] = "2022-11-28"
+}
+
+/**
+ * Validates a PAT against the GitHub API and stores it if valid.
+ * Returns [success:true, user:"login"] or [success:false, error:"msg"].
+ */
+def githubVerifyAndSavePAT(String token) {
+	try {
+		def params = [
+			uri    : "https://api.github.com/user",
+			headers: [
+				"Authorization"       : "Bearer ${token}",
+				"Accept"              : "application/vnd.github+json",
+				"X-GitHub-Api-Version": "2022-11-28"
+			],
+			timeout: 15
+		]
+		def user = null
+		httpGet(params) { resp ->
+			user = resp.data?.login
+		}
+		if (user) {
+			state.githubToken     = token
+			state.githubTokenType = "pat"
+			state.githubTokenUser = user
+			log.info "HPM: GitHub PAT accepted for user '${user}'."
+			return [success: true, user: user]
+		}
+		return [success: false, error: "Could not retrieve GitHub user info."]
+	} catch (groovyx.net.http.HttpResponseException e) {
+		def status = e.response?.status ?: "unknown"
+		return [success: false, error: "HTTP ${status} — check your token scopes."]
+	} catch (Exception e) {
+		return [success: false, error: e.message]
+	}
+}
+
+/**
+ * Manages the GitHub Device Flow OAuth lifecycle.
+ * State machine stored in state.githubDeviceFlowState.
+ * Returns a status map — see inline comments for possible values.
+ */
+def githubRunDeviceFlow() {
+	def clientId = githubOAuthClientId?.trim()
+	if (!clientId) {
+		return [status: "error",
+		        error : "No GitHub OAuth Client ID configured. Add it in the GitHub Authentication section."]
+	}
+
+	def flowState = state.githubDeviceFlowState ?: [:]
+
+	// Phase 1 — request device & user codes
+	if (!flowState.deviceCode) {
+		try {
+			def params = [
+				uri                : "https://github.com/login/device/code",
+				requestContentType : "application/x-www-form-urlencoded",
+				headers            : ["Accept": "application/json"],
+				body               : "client_id=${clientId}&scope=repo",
+				timeout            : 15
+			]
+			def resp = null
+			httpPost(params) { r -> resp = r.data }
+			if (!resp?.device_code)
+				return [status: "error", error: "GitHub did not return a device code."]
+
+			flowState.deviceCode      = resp.device_code
+			flowState.userCode        = resp.user_code
+			flowState.verificationUri = resp.verification_uri
+			flowState.interval        = (resp.interval ?: 5) as Integer
+			flowState.expiresAt       = now() + ((resp.expires_in ?: 900) * 1000L)
+			state.githubDeviceFlowState = flowState
+			log.info "HPM: GitHub Device Flow started — user code: ${flowState.userCode}"
+		} catch (Exception e) {
+			return [status: "error", error: "Could not reach GitHub: ${e.message}"]
+		}
+	}
+
+	// Check expiry
+	if (now() > flowState.expiresAt) {
+		state.remove("githubDeviceFlowState")
+		return [status: "expired"]
+	}
+
+	// Phase 2 — poll for token (rate-limited to flowState.interval seconds)
+	def lastPollAt   = flowState.lastPollAt ?: 0L
+	def pollInterval = (flowState.interval ?: 5) * 1000L
+	if ((now() - lastPollAt) >= pollInterval) {
+		flowState.lastPollAt = now()
+		state.githubDeviceFlowState = flowState
+		try {
+			def params = [
+				uri                : "https://github.com/login/oauth/access_token",
+				requestContentType : "application/x-www-form-urlencoded",
+				headers            : ["Accept": "application/json"],
+				body               : "client_id=${clientId}" +
+				                     "&device_code=${flowState.deviceCode}" +
+				                     "&grant_type=urn:ietf:params:oauth:grant-type:device_code",
+				timeout            : 15
+			]
+			def resp = null
+			httpPost(params) { r -> resp = r.data }
+
+			if (resp?.access_token) {
+				def verifyResult = githubVerifyAndSavePAT(resp.access_token)
+				state.githubTokenType = "oauth"
+				state.remove("githubDeviceFlowState")
+				if (verifyResult.success) {
+					log.info "HPM: GitHub OAuth complete for '${verifyResult.user}'."
+					return [status: "complete", user: verifyResult.user]
+				}
+				return [status: "error", error: verifyResult.error]
+
+			} else if (resp?.error == "authorization_pending") {
+				// normal — keep waiting
+			} else if (resp?.error == "slow_down") {
+				flowState.interval = (flowState.interval ?: 5) + 5
+				state.githubDeviceFlowState = flowState
+			} else if (resp?.error == "expired_token") {
+				state.remove("githubDeviceFlowState")
+				return [status: "expired"]
+			} else if (resp?.error) {
+				state.remove("githubDeviceFlowState")
+				return [status: "error", error: resp.error]
+			}
+		} catch (Exception e) {
+			log.warn "HPM: Device flow poll error: ${e.message}"
+		}
+	}
+
+	return [
+		status         : "pending",
+		userCode       : flowState.userCode,
+		verificationUri: flowState.verificationUri,
+		interval       : flowState.interval
+	]
+}
+
+/**
+ * Returns the stored GitHub token, or null if none is configured.
+ */
+String getGithubToken() {
+	return state.githubToken ?: null
+}
+
 def downloadFile(file) {
 	try {
 		def params = [
@@ -3208,8 +3498,10 @@ def downloadFile(file) {
 			requestContentType: "application/json",
 			contentType: "application/json",
 			textParser: true,
-			timeout: 300
+			timeout: 300,
+			headers: [:]
 		]
+		githubInjectAuth(params)
 		def result = null
 		httpGet(params) { resp ->
 			result = resp.data.text
@@ -3230,8 +3522,15 @@ def downloadFileBinary(file) {
 			uri: file,
 			requestContentType: "application/octet-stream",
 			contentType: "application/octet-stream",
-			timeout: 300
+			timeout: 300,
+			headers: [:]
 		]
+		
+		// Add GitHub Authorization header if token is configured and URL is from GitHub
+		if (githubToken && (file.contains("github.com") || file.contains("githubusercontent.com"))) {
+			params.headers.Authorization = "token ${githubToken}"
+			logDebug "Added GitHub authorization header for binary request to ${file}"
+		}
 		def result = null
 		httpGet(params) { response ->
             if (response.status == 200) {
@@ -3256,8 +3555,15 @@ def downloadFileAsync(String file, String callback, Map data = null) {
 			uri: file,
 			requestContentType: "application/json",
 			contentType: "text/plain",
-			timeout: 300
+			timeout: 300,
+			headers: [:]
 		]
+		
+		// Add GitHub Authorization header if token is configured and URL is from GitHub
+		if (githubToken && (file.contains("github.com") || file.contains("githubusercontent.com"))) {
+			params.headers.Authorization = "token ${githubToken}"
+			logDebug "Added GitHub authorization header for async request to ${file}"
+		}
 		asynchttpGet(downloadFileAsyncCallback, params, [callback: callback, data: data, file: file])
 	}
 	catch (e) {
