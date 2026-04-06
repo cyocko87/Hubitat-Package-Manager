@@ -2662,9 +2662,8 @@ def prefPkgMatchUpVerify() {
 				paragraph "<b>Found Matching Packages</b>"
 				paragraph "The following matches were found. There is a possibility that some may have matched incorrectly. Only check off the items that you believe are correct."
 				
-				div(style: "float:right;margin-bottom:10px;") {
-					input "btnToggleMatches", "button", title: "Toggle All", width: 2, submitOnChange: true
-				}
+				// Removed div not supported in this Hubitat version - placing button directly
+				input "btnToggleMatches", "button", title: "Toggle All", width: 2, submitOnChange: true
 				
 				input "pkgMatches", "enum", title: "Choose packages to match", required: true, multiple: true, options: itemsForList
 				input "pkgUpToDate", "bool", title: "Assume that packages are up-to-date? If set, the currently installed version will be marked as up-to-date. If not set, next time you run an update check this package will be updated."
