@@ -3449,7 +3449,7 @@ def githubRunDeviceFlow() {
 	if (!flowState.deviceCode) {
 		try {
 			def params = [
-				uri                : "https://github.com/login/device",
+				uri                : "https://github.com/login/device/code",
 				requestContentType : "application/x-www-form-urlencoded",
 				headers            : ["Accept": "application/json"],
 				body               : "client_id=${clientId}&scope=repo",
