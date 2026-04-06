@@ -60,7 +60,8 @@
  *                         added feature to identify Azure search vs sql search
  */
 
-	public static String version()      {  return "v1.9.10"  }
+	public static String version()      {  return "v1.9.11"  }
+	@Field static final String GITHUB_REPO = "cyocko87/Hubitat-Package-Manager"
 	def getThisCopyright(){"&copy; 2020 Dominick Meglio"}
 
 definition(
@@ -238,6 +239,49 @@ def appButtonHandler(btn) {
 			break
 		case ~/^btnDeleteRepo(\d+)/:
 			deleteCustomRepository(Matcher.lastMatcher[0][1].toInteger())
+			break
+		case "btnToggleMatches":
+			if (pkgMatches == null || pkgMatches.size() != itemsForList.size()) {
+				app.updateSetting("pkgMatches", itemsForList.keySet() as List)
+			} else {
+				app.updateSetting("pkgMatches", [])
+			}
+			break
+		case "btnCheckHpmUpdates":
+			try {
+				def params = [
+					uri: "https://api.github.com/repos/${GITHUB_REPO}/commits/main",
+					timeout: 10
+				]
+				githubInjectAuth(params)
+				
+				httpGet(params) { resp ->
+					def latestCommit = resp.data.sha
+					def currentCommit = getHubCommitHash()
+					
+					if (latestCommit != currentCommit) {
+						def latestVersion = resp.data.commit.message.take(60)
+						paragraph "<span style='color:green;font-weight:bold;'>✓ New version available</span><br>Latest commit: <code>${latestCommit.take(8)}</code><br>${latestVersion}"
+						input "btnUpdateHpm", "button", title: "Update Now", width: 3
+					} else {
+						paragraph "<span style='color:green;'>✓ You are running the latest version</span><br>Commit: <code>${currentCommit.take(8)}</code>"
+					}
+				}
+			} catch (Exception e) {
+				paragraph "<span style='color:red;'>✗ Could not check for updates: ${e.message}</span>"
+			}
+			break
+		case "btnUpdateHpm":
+			try {
+				def latestCode = downloadFile("https://raw.githubusercontent.com/${GITHUB_REPO}/main/apps/Package_Manager.groovy")
+				if (latestCode) {
+					def appId = app.id
+					upgradeApp(appId, latestCode)
+					paragraph "<span style='color:green;font-weight:bold;'>✓ Update complete! HPM has been upgraded successfully.</span>"
+				}
+			} catch (Exception e) {
+				paragraph "<span style='color:red;'>✗ Update failed: ${e.message}</span>"
+			}
 			break
 	}
 }
@@ -521,9 +565,14 @@ def prefSettings(params) {
 				}
 				section ("<b>Un-Match a Package</b>") {
 					paragraph "Un-Match selected Apps or Drivers by removing the cached manifest. Follow this step with a Match Up to install the latest Manifest. This feature is best used by experienced users. Or when instructed by the owner of a Package due to a change they made in their Manifest structure."
-					input "btnUnMatch", "button", title: "Remove a Matched Package"
-				}
+				input "btnUnMatch", "button", title: "Remove a Matched Package"
 			}
+
+			section ("<b>Application Update</b>") {
+				paragraph "Check for latest updates directly from GitHub repository"
+				input "btnCheckHpmUpdates", "button", title: "Check for Updates", width: 3
+			}
+		}
 		}
 	}
 }
@@ -2608,12 +2657,17 @@ def prefPkgMatchUpVerify() {
 			itemsForList = itemsForList.sort { it-> it.value}
 			return dynamicPage(name: "prefPkgMatchUpVerify", title: "", nextPage: "prefPkgMatchUpComplete", install: false, uninstall: false) {
 				displayHeader(' MatchUp')
-				section {
-					paragraph "<b>Found Matching Packages</b>"
-					paragraph "The following matches were found. There is a possibility that some may have matched incorrectly. Only check off the items that you believe are correct."
-					input "pkgMatches", "enum", title: "Choose packages to match", required: true, multiple: true, options: itemsForList
-					input "pkgUpToDate", "bool", title: "Assume that packages are up-to-date? If set, the currently installed version will be marked as up-to-date. If not set, next time you run an update check this package will be updated."
+			section {
+				paragraph "<b>Found Matching Packages</b>"
+				paragraph "The following matches were found. There is a possibility that some may have matched incorrectly. Only check off the items that you believe are correct."
+				
+				div(style: "float:right;margin-bottom:10px;") {
+					input "btnToggleMatches", "button", title: "Toggle All", width: 2, submitOnChange: true
 				}
+				
+				input "pkgMatches", "enum", title: "Choose packages to match", required: true, multiple: true, options: itemsForList
+				input "pkgUpToDate", "bool", title: "Assume that packages are up-to-date? If set, the currently installed version will be marked as up-to-date. If not set, next time you run an update check this package will be updated."
+			}
 				if (!state.firstRun) {
 					section {
 						paragraph "<hr>"
@@ -3387,11 +3441,7 @@ def githubVerifyAndSavePAT(String token) {
  * Returns a status map — see inline comments for possible values.
  */
 def githubRunDeviceFlow() {
-	def clientId = githubOAuthClientId?.trim()
-	if (!clientId) {
-		return [status: "error",
-		        error : "No GitHub OAuth Client ID configured. Add it in the GitHub Authentication section."]
-	}
+	def clientId = "Ov23li6jeCMqMgVxYaK"
 
 	def flowState = state.githubDeviceFlowState ?: [:]
 
