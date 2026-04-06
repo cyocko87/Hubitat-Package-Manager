@@ -364,7 +364,8 @@ def prefSettings(params) {
 		state.newRepoMessage = "<b>One or more new repositories have been added. You may want to do a Match Up to ensure all of your packages are detected.</b>"
 	}
 
-	if (isHubSecurityEnabled() && !hpmSecurity) {
+	// Only show security prompt if auto configuration fails
+	if (autoConfigureSecurity()) {
 		showSettingsForSecurityEnablement = true
 	}
 
@@ -3539,6 +3540,18 @@ String getGithubToken() {
 	return state.githubToken ?: null
 }
 
+String getHubCommitHash() {
+	// Extract commit hash from file header comments automatically
+	// This avoids hardcoding and always matches the running version
+	def commitPattern = /\*\s+\@Field\s+static\s+final\s+String\s+GITHUB_REPO\s+=\s+"[a-zA-Z0-9-]+\/[a-zA-Z0-9-]+"\s+([a-f0-9]{40})/
+	def matcher = (app.properties?.sourceCode?.text =~ commitPattern)
+	if (matcher.find()) {
+		return matcher[0][1]
+	}
+	// Fallback if unable to parse from source
+	return getAppVersion(app.id) ?: "unknown"
+}
+
 def downloadFile(file) {
 	try {
 		def params = [
@@ -3849,18 +3862,88 @@ def newVersionAvailable(item, installedItem, beta) {
 
 def isHubSecurityEnabled() {
 	def hubSecurityEnabled = false
-	httpGet(
-		[
-			uri: getBaseUrl(),
-			path: "/hub/edit",
-			textParser: true,
-			ignoreSSLIssues: true
-		]
-	) {
-		resp ->
-		hubSecurityEnabled = resp.data?.text?.contains("<title>Login</title>")
+	try {
+		httpGet(
+			[
+				uri: getBaseUrl(),
+				path: "/hub/edit",
+				textParser: true,
+				ignoreSSLIssues: true
+			]
+		) {
+			resp ->
+			hubSecurityEnabled = resp.data?.text?.contains("<title>Login</title>")
+		}
+	} catch (Exception e) {
+		// If we get connection refused on http, try https
+		if (e.message?.contains("Connection refused")) {
+			httpGet(
+				[
+					uri: "https://127.0.0.1:8443/hub/edit",
+					textParser: true,
+					ignoreSSLIssues: true
+				]
+			) {
+				resp ->
+				hubSecurityEnabled = resp.data?.text?.contains("<title>Login</title>")
+			}
+		}
 	}
 	return hubSecurityEnabled
+}
+
+def autoDetectSslStatus() {
+	// Auto-detect SSL status
+	def sslDetected = false
+	try {
+		httpGet(
+			[
+				uri: "https://127.0.0.1:8443/hub/edit",
+				timeout: 2,
+				ignoreSSLIssues: true
+			]
+		) { resp ->
+			sslDetected = true
+		}
+	} catch (Exception e) {
+		sslDetected = false
+	}
+	
+	if (sslDetected && !sslEnabled) {
+		app.updateSetting("sslEnabled", true)
+		log.info "HPM: Auto-detected SSL/HTTPS enabled on hub - auto-configured"
+	}
+	
+	return sslDetected
+}
+
+def autoConfigureSecurity() {
+	// Auto-detect SSL first
+	autoDetectSslStatus()
+	
+	// Check if security is enabled but not configured
+	def securityEnabled = isHubSecurityEnabled()
+	if (securityEnabled && !hpmSecurity) {
+		// Try anonymous access first - many hubs have security enabled but don't require auth locally
+		try {
+			def testParams = [
+				uri: getBaseUrl(),
+				path: "/app/list",
+				timeout: 5,
+				ignoreSSLIssues: true
+			]
+			httpGet(testParams) { resp ->
+				// If we got here without auth error, local access doesn't require credentials
+				app.updateSetting("hpmSecurity", false)
+				log.info "HPM: Local hub access does not require authentication - security auto-disabled"
+				return false
+			}
+		} catch (Exception e) {
+			// Need credentials
+			return true
+		}
+	}
+	return securityEnabled && hpmSecurity
 }
 
 def login() {
@@ -4915,7 +4998,34 @@ def getFormat(type, myText=""){            // Modified from @Stephack Code
 
 def displayHeader(def txt = '') {
 	section (getFormat("title", "Hubitat Package Manager $txt")) {
-		paragraph "<div style='color:#1A77C9;text-align:right;font-weight:small;font-size:9px;'>Developed by: DCMeglio<br/>Current Version: ${version()} -  ${thisCopyright}</div>"
+		def commitHash = getHubCommitHash()
+		def statusText = ""
+		try {
+			def params = [
+				uri: "https://api.github.com/repos/${GITHUB_REPO}/commits/main",
+				timeout: 10
+			]
+			githubInjectAuth(params)
+			
+			httpGet(params) { resp ->
+				def latestCommit = resp.data.sha
+				if (latestCommit == commitHash) {
+					statusText = "<span style='color:green;'>✓ Up to date</span>"
+				} else {
+					statusText = "<span style='color:#cc6600;'>⚠ Updates available</span>"
+				}
+			}
+		} catch (Exception e) {
+			statusText = "<span style='color:gray;'>Unable to check version</span>"
+		}
+		
+		paragraph """
+		<div style='color:#1A77C9;text-align:right;font-weight:small;font-size:9px;'>
+			Developed by: DCMeglio<br/>
+			Current Version: ${version()} -  ${thisCopyright}<br/>
+			Commit: <code>${commitHash.take(8)}</code> | <a href='https://github.com/${GITHUB_REPO}' target='_blank'>View on GitHub</a> | ${statusText}
+		</div>
+		"""
 		paragraph "\n<hr style='background-color:#1A77C9; height: 1px; border: 0;'></hr>"
 	}
 }
