@@ -5114,6 +5114,9 @@ def displayHeader(def txt = '') {
 	section (getFormat("title", "Hubitat Package Manager $txt")) {
 		def currentVersion = version()
 		def statusText = ""
+		def latestCommit = ""
+		def commitMessage = ""
+		
 		try {
 			def params = [
 				uri: "https://api.github.com/repos/${GITHUB_REPO}/commits/main",
@@ -5122,15 +5125,13 @@ def displayHeader(def txt = '') {
 			githubInjectAuth(params)
 			
 			httpGet(params) { resp ->
-				def latestCommit = resp.data.sha
+				latestCommit = resp.data.sha
+				commitMessage = resp.data.commit.message?.take(60) ?: ""
 				// Store in state for button handler to use
 				state.hpmLatestCommit = latestCommit
-				state.hpmCurrentCommit = latestCommit  // Use latest commit for comparison
-				// Always show updates available for now since we can't reliably compare
-				statusText = "<span style='color:#cc6600;'>⚠ Check GitHub for updates</span>"
-				// Mark as done so button shows immediately
+				state.hpmLatestMessage = commitMessage
 				state.hpmUpdateCheck = "done"
-				state.hpmLatestMessage = resp.data.commit.message?.take(60) ?: ""
+				statusText = "<span style='color:green;'>Latest: <code>${latestCommit.take(8)}</code></span>"
 			}
 		} catch (Exception e) {
 			statusText = "<span style='color:gray;'>Unable to check version</span>"
@@ -5147,19 +5148,10 @@ def displayHeader(def txt = '') {
 		if (state.hpmUpdateCheck == "checking") {
 			paragraph "<span style='color:blue;'>Checking for updates...</span>"
 		} else if (state.hpmUpdateCheck == "done") {
-			if (state.hpmLatestCommit != state.hpmCurrentCommit) {
-				paragraph "<span style='color:green;font-weight:bold;'>✓ New version available</span><br>Latest commit: <code>${state.hpmLatestCommit.take(8)}</code><br>${state.hpmLatestMessage}"
-				if (state.hpmUpdateProgress == "downloading") {
-					paragraph "<span style='color:blue;'>Downloading update...</span>"
-				} else if (state.hpmUpdateProgress == "upgrading") {
-					paragraph "<span style='color:blue;'>Upgrading app...</span>"
-				} else {
-					// Clear progress state so button always shows when updates are available
-					state.hpmUpdateProgress = null
-					input "btnUpdateHpm", "button", title: "Update Now", width: 3
-				}
-			} else {
-				paragraph "<span style='color:green;'>✓ You are running the latest version</span><br>Commit: <code>${state.hpmCurrentCommit.take(8)}</code>"
+			if (latestCommit) {
+				paragraph "<span style='color:green;font-weight:bold;'>Latest commit: <code>${latestCommit.take(8)}</code></span><br>${commitMessage}"
+				input "btnUpdateHpm", "button", title: "Update Now", width: 3
+				paragraph "<span style='color:gray;font-size:10px;'>Note: Self-update may fail due to Hubitat constraints. If update fails, update manually from GitHub.</span>"
 			}
 		} else if (state.hpmUpdateCheck == "error") {
 			paragraph "<span style='color:red;'>✗ Could not check for updates: ${state.hpmUpdateError}</span>"
