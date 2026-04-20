@@ -288,9 +288,9 @@ def appButtonHandler(btn) {
 				def latestCode = downloadFile("https://raw.githubusercontent.com/${GITHUB_REPO}/main/apps/Package_Manager.groovy")
 				log.info "HPM: Downloaded code length: ${latestCode?.length()}"
 				if (latestCode) {
-					// Basic validation - check if code contains expected markers
+					// Basic validation
 					if (!latestCode.contains("definition(") || !latestCode.contains("preferences {")) {
-						log.error "HPM: Downloaded code appears invalid - missing required Groovy structure"
+						log.error "HPM: Downloaded code appears invalid"
 						state.hpmUpdateProgress = null
 						state.hpmUpdateResult = "error"
 						state.hpmUpdateError = "Downloaded code appears invalid"
@@ -300,24 +300,52 @@ def appButtonHandler(btn) {
 					state.hpmUpdateProgress = "upgrading"
 					def appId = app.id
 					log.info "HPM: Upgrading app ${appId}..."
-					def updateResult = upgradeApp(appId, latestCode)
-					log.info "HPM: Update result: ${updateResult}"
-					if (updateResult) {
-						state.hpmUpdateProgress = "done"
+					
+					// Use version() instead of getAppVersion for self-update
+					def appVersion = version()
+					log.info "HPM: Using version ${appVersion} for update"
+					
+					def params = [
+						uri: getBaseUrl(),
+						path: "/app/ajax/update",
+						requestContentType: "application/x-www-form-urlencoded",
+						headers: [
+							"Connection": 'keep-alive',
+							"Cookie": state.cookie
+						],
+						body: [
+							id: appId,
+							version: appVersion,
+							source: latestCode
+						],
+						timeout: 420,
+						ignoreSSLIssues: true
+					]
+					def result = false
+					httpPost(params) { resp ->
+						log.info "HPM: Upgrade API response: ${resp.data}"
+						result = resp.data.status == "success"
+						if (!result) {
+							log.error "HPM: Upgrade API error: ${resp.data}"
+						}
+					}
+					
+					log.info "HPM: Update result: ${result}"
+					state.hpmUpdateProgress = null
+					if (result) {
 						state.hpmUpdateResult = "success"
 					} else {
-						state.hpmUpdateProgress = null  // Clear progress so button shows again
 						state.hpmUpdateResult = "error"
 						state.hpmUpdateError = "Update API returned failure - try manual update from GitHub"
 					}
 				} else {
-					state.hpmUpdateProgress = null  // Clear progress so button shows again
+					state.hpmUpdateProgress = null
 					state.hpmUpdateResult = "error"
 					state.hpmUpdateError = "Failed to download code"
 				}
 			} catch (Exception e) {
 				log.error "HPM: Update failed: ${e.message}"
-				state.hpmUpdateProgress = null  // Clear progress so button shows again
+				state.hpmUpdateProgress = null
 				state.hpmUpdateResult = "error"
 				state.hpmUpdateError = e.message
 			}
