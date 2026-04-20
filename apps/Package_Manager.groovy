@@ -258,11 +258,13 @@ def appButtonHandler(btn) {
 		return prefPkgMatchUpVerify()
 		break
 		case "btnCheckHpmUpdates":
-			state.hpmUpdateCheck = "checking"
-			state.hpmUpdateResult = null  // Clear old update result
-			state.hpmUpdateError = null  // Clear old error
-			state.hpmUpdateProgress = null  // Clear old progress
+			// Check latest commit and update in one step
 			try {
+				state.hpmUpdateProgress = "checking"
+				state.hpmUpdateResult = null
+				state.hpmUpdateError = null
+				
+				log.info "HPM: Checking latest commit from GitHub..."
 				def params = [
 					uri: "https://api.github.com/repos/${GITHUB_REPO}/commits/main",
 					timeout: 10
@@ -270,15 +272,76 @@ def appButtonHandler(btn) {
 				githubInjectAuth(params)
 				
 				httpGet(params) { resp ->
-					state.hpmUpdateCheck = "done"
-					state.hpmLatestCommit = resp.data.sha
-					state.hpmCurrentCommit = getHubCommitHash()
-					state.hpmLatestMessage = resp.data.commit.message?.take(60) ?: ""
+					def latestCommit = resp.data.sha
+					def commitMessage = resp.data.commit.message?.take(60) ?: ""
+					log.info "HPM: Latest commit is ${latestCommit.take(8)}: ${commitMessage}"
+					
+					// Download and update
+					state.hpmUpdateProgress = "downloading"
+					def latestCode = downloadFile("https://raw.githubusercontent.com/${GITHUB_REPO}/main/apps/Package_Manager.groovy")
+					log.info "HPM: Downloaded code length: ${latestCode?.length()}"
+					
+					if (latestCode) {
+						if (!latestCode.contains("definition(") || !latestCode.contains("preferences {")) {
+							log.error "HPM: Downloaded code appears invalid"
+							state.hpmUpdateProgress = null
+							state.hpmUpdateResult = "error"
+							state.hpmUpdateError = "Downloaded code appears invalid"
+						} else {
+							state.hpmUpdateProgress = "upgrading"
+							def appId = app.id
+							log.info "HPM: Upgrading app ${appId}..."
+							
+							def appVersion = version()
+							log.info "HPM: Using version ${appVersion} for update"
+							
+							def updateParams = [
+								uri: getBaseUrl(),
+								path: "/app/ajax/update",
+								requestContentType: "application/x-www-form-urlencoded",
+								headers: [
+									"Connection": 'keep-alive',
+									"Cookie": state.cookie
+								],
+								body: [
+									id: appId,
+									version: appVersion,
+									source: latestCode
+								],
+								timeout: 420,
+								ignoreSSLIssues: true
+							]
+							def result = false
+							httpPost(updateParams) { resp ->
+								log.info "HPM: Upgrade API response: ${resp.data}"
+								result = resp.data.status == "success"
+								if (!result) {
+									log.error "HPM: Upgrade API error: ${resp.data}"
+								}
+							}
+							
+							log.info "HPM: Update result: ${result}"
+							state.hpmUpdateProgress = null
+							if (result) {
+								state.hpmUpdateResult = "success"
+							} else {
+								state.hpmUpdateResult = "error"
+								state.hpmUpdateError = "Update API returned failure - try manual update from GitHub"
+							}
+						}
+					} else {
+						state.hpmUpdateProgress = null
+						state.hpmUpdateResult = "error"
+						state.hpmUpdateError = "Failed to download code"
+					}
 				}
 			} catch (Exception e) {
-				state.hpmUpdateCheck = "error"
+				log.error "HPM: Update failed: ${e.message}"
+				state.hpmUpdateProgress = null
+				state.hpmUpdateResult = "error"
 				state.hpmUpdateError = e.message
 			}
+			return prefOptions()
 			break
 		case "btnUpdateHpm":
 			try {
@@ -5103,67 +5166,29 @@ def getFormat(type, myText=""){            // Modified from @Stephack Code
 
 def displayHeader(def txt = '') {
 	// Clear stale update state on page load
-	state.remove("hpmUpdateCheck")
-	state.remove("hpmLatestCommit")
-	state.remove("hpmCurrentCommit")
-	state.remove("hpmLatestMessage")
 	state.remove("hpmUpdateResult")
 	state.remove("hpmUpdateError")
 	state.remove("hpmUpdateProgress")
 	
 	section (getFormat("title", "Hubitat Package Manager $txt")) {
-		def currentVersion = version()
-		def statusText = ""
-		def latestCommit = ""
-		def commitMessage = ""
-		
-		try {
-			def params = [
-				uri: "https://api.github.com/repos/${GITHUB_REPO}/commits/main",
-				timeout: 10
-			]
-			githubInjectAuth(params)
-			
-			httpGet(params) { resp ->
-				latestCommit = resp.data.sha
-				commitMessage = resp.data.commit.message?.take(60) ?: ""
-				// Store in state for button handler to use
-				state.hpmLatestCommit = latestCommit
-				state.hpmLatestMessage = commitMessage
-				state.hpmUpdateCheck = "done"
-				statusText = "<span style='color:green;'>Latest: <code>${latestCommit.take(8)}</code></span>"
-			}
-		} catch (Exception e) {
-			statusText = "<span style='color:gray;'>Unable to check version</span>"
-		}
-		
 		paragraph """
 		<div style='color:#1A77C9;text-align:right;font-weight:small;font-size:9px;'>
 			Developed by: DCMeglio<br/>
 			Current Version: ${version()} -  ${thisCopyright}<br/>
-			<a href='https://github.com/${GITHUB_REPO}' target='_blank'>View on GitHub</a> | ${statusText}
+			<a href='https://github.com/${GITHUB_REPO}' target='_blank'>View on GitHub</a> | <a href='https://github.com/${GITHUB_REPO}/commits/main' target='_blank'>Check Latest Commit</a>
 		</div>
 		"""
 		
-		if (state.hpmUpdateCheck == "checking") {
-			paragraph "<span style='color:blue;'>Checking for updates...</span>"
-		} else if (state.hpmUpdateCheck == "done") {
-			if (latestCommit) {
-				paragraph "<span style='color:green;font-weight:bold;'>Latest commit: <code>${latestCommit.take(8)}</code></span><br>${commitMessage}"
-				input "btnUpdateHpm", "button", title: "Update Now", width: 3
-				paragraph "<span style='color:gray;font-size:10px;'>Note: Self-update may fail due to Hubitat constraints. If update fails, update manually from GitHub.</span>"
-			}
-		} else if (state.hpmUpdateCheck == "error") {
-			paragraph "<span style='color:red;'>✗ Could not check for updates: ${state.hpmUpdateError}</span>"
-		}
+		// Always show update option
+		paragraph "<span style='color:green;font-weight:bold;'>Update HPM from GitHub</span>"
+		input "btnCheckHpmUpdates", "button", title: "Check Latest & Update", width: 3
+		paragraph "<span style='color:gray;font-size:10px;'>Note: Self-update may fail due to Hubitat constraints. If update fails, update manually from GitHub.</span>"
 		
 		if (state.hpmUpdateResult == "success") {
 			paragraph "<span style='color:green;font-weight:bold;'>✓ Update complete! HPM has been upgraded successfully.</span>"
 		} else if (state.hpmUpdateResult == "error") {
 			paragraph "<span style='color:red;'>✗ Update failed: ${state.hpmUpdateError}</span>"
 		}
-		
-		input "btnCheckHpmUpdates", "button", title: "Check for Updates", width: 3
 		paragraph "\n<hr style='background-color:#1A77C9; height: 1px; border: 0;'></hr>"
 	}
 }
