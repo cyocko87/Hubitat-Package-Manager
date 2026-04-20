@@ -240,13 +240,20 @@ def appButtonHandler(btn) {
 		case ~/^btnDeleteRepo(\d+)/:
 			deleteCustomRepository(Matcher.lastMatcher[0][1].toInteger())
 			break
-		case "btnToggleMatches":
-			if (pkgMatches == null || pkgMatches.size() != itemsForList.size()) {
-				app.updateSetting("pkgMatches", itemsForList.keySet() as List)
-			} else {
-				app.updateSetting("pkgMatches", [])
-			}
-			break
+	case "btnToggleMatches":
+		def itemsForList = state.fastTrackResults?.collectEntries { pkg ->
+			def appAndDriverMatches = ((pkg.matchedApps?.collect { it -> it.title } ?: []) + (pkg.matchedDrivers?.collect { it -> it.title } ?: [])).join(", ")
+			["${pkg.location}":"${pkg.name} - matched (${appAndDriverMatches})"]
+		} ?: [:]
+
+		if (pkgMatches == null || pkgMatches.size() != itemsForList.size()) {
+			app.updateSetting("pkgMatches", itemsForList.keySet() as List)
+		} else {
+			app.updateSetting("pkgMatches", [])
+		}
+		// Force page reload to refresh checkboxes immediately
+		return prefPkgMatchUpVerify()
+		break
 		case "btnCheckHpmUpdates":
 			try {
 				def params = [
@@ -364,9 +371,14 @@ def prefSettings(params) {
 		state.newRepoMessage = "<b>One or more new repositories have been added. You may want to do a Match Up to ensure all of your packages are detected.</b>"
 	}
 
-	// Only show security prompt if auto configuration fails
-	if (autoConfigureSecurity()) {
+	// Only show security prompt if auto configuration FAILS AND returns true
+	def securityRequired = autoConfigureSecurity()
+	if (securityRequired) {
 		showSettingsForSecurityEnablement = true
+	}
+	else {
+		// Auto configuration succeeded - skip security setup completely
+		// User will never see this screen on first run
 	}
 
 	installHPMManifest()
@@ -469,14 +481,16 @@ def prefSettings(params) {
 							"target='_blank'><b>${flowState.verificationUri}</b></a> " +
 							"in any browser.<br>" +
 							"<b>Step 2:</b> Enter code: " +
-							"<span style='font-size:1.4em;font-weight:bold;letter-spacing:4px;" +
-							"color:#0366d6;'>${flowState.userCode}</span><br>" +
+							"<span id='ghCode' style='font-size:1.4em;font-weight:bold;letter-spacing:4px;" +
+							"color:#0366d6;'>${flowState.userCode}</span>" +
+							" <button onclick=\"navigator.clipboard.writeText('${flowState.userCode}');this.innerText='✓ Copied';setTimeout(()=>this.innerText='📋 Copy',1500)\" style=\"padding:2px 8px;margin-left:10px;\">📋 Copy</button><br>" +
 							"<b>Step 3:</b> This page will refresh automatically every " +
 							"${flowState.interval}s until you approve."
 						)
 						paragraph "⏳ Waiting for GitHub authorization…"
 						input "btnGitHubCancelDeviceFlow", "button",
 							title: "Cancel", width: 3
+						// Force page refresh with unique parameter to bypass cache
 						app.updateSetting("_ghPollTick",
 							[value: now().toString(), type:"string"])
 
@@ -3441,7 +3455,7 @@ def githubVerifyAndSavePAT(String token) {
  * Returns a status map — see inline comments for possible values.
  */
 def githubRunDeviceFlow() {
-	def clientId = "Ov23li6jeCMqMgVxYaK"
+	def clientId = "Ov23lifC0ErRAfmRlGL5"
 
 	def flowState = state.githubDeviceFlowState ?: [:]
 
@@ -3450,15 +3464,29 @@ def githubRunDeviceFlow() {
 		try {
 			def params = [
 				uri                : "https://github.com/login/device/code",
-				requestContentType : "application/x-www-form-urlencoded",
-				headers            : ["Accept": "application/json"],
+				headers            : ["Accept": "application/json", "Content-Type": "application/x-www-form-urlencoded"],
 				body               : "client_id=${clientId}&scope=repo",
 				timeout            : 15
 			]
+			
+			log.debug "GITHUB DEBUG: Sending POST to ${params.uri}"
+			log.debug "GITHUB DEBUG: Body: ${params.body}"
+			log.debug "GITHUB DEBUG: Headers: ${params.headers}"
+			
 			def resp = null
-			httpPost(params) { r -> resp = r.data }
-			if (!resp?.device_code)
-				return [status: "error", error: "GitHub did not return a device code."]
+			def statusCode = null
+			httpPost(params) { r -> 
+				statusCode = r.status
+				log.debug "GITHUB DEBUG: Response status: ${statusCode}"
+				log.debug "GITHUB DEBUG: Response headers: ${r.headers}"
+				resp = r.data 
+				log.debug "GITHUB DEBUG: Response data: ${resp}"
+			}
+			
+			if (!resp?.device_code) {
+				log.error "GITHUB DEBUG: No device code returned. Full response: ${resp}"
+				return [status: "error", error: "GitHub did not return a device code. Status=${statusCode}"]
+			}
 
 			flowState.deviceCode      = resp.device_code
 			flowState.userCode        = resp.user_code
@@ -3467,8 +3495,13 @@ def githubRunDeviceFlow() {
 			flowState.expiresAt       = now() + ((resp.expires_in ?: 900) * 1000L)
 			state.githubDeviceFlowState = flowState
 			log.info "HPM: GitHub Device Flow started — user code: ${flowState.userCode}"
+		} catch (groovyx.net.http.HttpResponseException e) {
+			log.error "GITHUB DEBUG: HTTP ERROR. Status: ${e.statusCode} Response: ${e.response?.data}"
+			log.error "GITHUB DEBUG: Exception message: ${e.message}"
+			return [status: "error", error: "GitHub HTTP ${e.statusCode}: ${e.message}"]
 		} catch (Exception e) {
-			return [status: "error", error: "Could not reach GitHub: ${e.message}"]
+			log.error "GITHUB DEBUG: GENERAL ERROR: ${e.class.name} ${e.message}", e
+			return [status: "error", error: "Could not reach GitHub: ${e.class.name} ${e.message}"]
 		}
 	}
 
