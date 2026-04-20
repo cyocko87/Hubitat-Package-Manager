@@ -276,16 +276,26 @@ def appButtonHandler(btn) {
 			break
 		case "btnUpdateHpm":
 			try {
+				log.info "HPM: Starting update download..."
 				def latestCode = downloadFile("https://raw.githubusercontent.com/${GITHUB_REPO}/main/apps/Package_Manager.groovy")
+				log.info "HPM: Downloaded code length: ${latestCode?.length()}"
 				if (latestCode) {
 					def appId = app.id
-					upgradeApp(appId, latestCode)
-					state.hpmUpdateResult = "success"
+					log.info "HPM: Upgrading app ${appId}..."
+					def updateResult = upgradeApp(appId, latestCode)
+					log.info "HPM: Update result: ${updateResult}"
+					if (updateResult) {
+						state.hpmUpdateResult = "success"
+					} else {
+						state.hpmUpdateResult = "error"
+						state.hpmUpdateError = "Update API returned failure"
+					}
 				} else {
 					state.hpmUpdateResult = "error"
 					state.hpmUpdateError = "Failed to download code"
 				}
 			} catch (Exception e) {
+				log.error "HPM: Update failed: ${e.message}"
 				state.hpmUpdateResult = "error"
 				state.hpmUpdateError = e.message
 			}
