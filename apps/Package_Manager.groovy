@@ -301,6 +301,8 @@ def appButtonHandler(btn) {
 								return
 							}
 							
+							log.info "HPM: Cookie after login: ${state.cookie}"
+							
 							def appVersion = getAppVersion(appId)
 							log.info "HPM: Using version ${appVersion} for update"
 							
@@ -4256,23 +4258,29 @@ def getAppSource(id) {
 }
 
 def getAppVersion(id) {
-	def params = [
-		uri: getBaseUrl(),
-		path: "/app/ajax/code",
-		requestContentType: "application/x-www-form-urlencoded",
-		headers: [
-			"Cookie": state.cookie
-		],
-		query: [
-			id: id
-		],
-		ignoreSSLIssues: true
-	]
-	def result
-	httpGet(params) { resp ->
-		result = resp.data.version
+	try {
+		def params = [
+			uri: getBaseUrl(),
+			path: "/app/ajax/code",
+			requestContentType: "application/x-www-form-urlencoded",
+			headers: [
+				"Cookie": state.cookie
+			],
+			query: [
+				id: id
+			],
+			ignoreSSLIssues: true
+		]
+		def result
+		httpGet(params) { resp ->
+			log.info "HPM: getAppVersion raw response for id ${id}: ${resp.data}"
+			result = resp.data.version
+		}
+		return result
+	} catch (e) {
+		log.error "HPM: getAppVersion failed for id ${id}: ${e}"
+		return null
 	}
-	return result
 }
 
 // Driver installation methods
