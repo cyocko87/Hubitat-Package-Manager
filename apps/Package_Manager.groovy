@@ -258,79 +258,36 @@ def appButtonHandler(btn) {
 		return prefPkgMatchUpVerify()
 		break
 		case "btnCheckHpmUpdates":
-			// Use importUrl endpoint to bypass Hubitat self-modification restriction
+			// Trigger existing repair pathway for HPM self-update
 			try {
 				state.hpmUpdateResult = null
 				state.hpmUpdateError = null
 				
-				log.info "HPM: Checking latest commit from GitHub..."
-				def commitParams = [
-					uri: "https://api.github.com/repos/${GITHUB_REPO}/commits/main",
-					timeout: 10
-				]
-				githubInjectAuth(commitParams)
+				log.info "HPM: Triggering self-update via repair pathway..."
 				
-				httpGet(commitParams) { resp ->
-					def latestCommit = resp.data.sha
-					log.info "HPM: Latest commit is ${latestCommit.take(8)}: ${resp.data.commit.message?.take(60)}"
-					
-					// Get session cookie
-					try {
-						httpGet([
-							uri: getBaseUrl(),
-							path: "/app/list",
-							textParser: true,
-							ignoreSSLIssues: true
-						]) { listResp ->
-							def cookie = listResp?.headers?.'Set-Cookie'?.split(';')?.getAt(0)
-							if (cookie) {
-								state.cookie = cookie
-								log.info "HPM: Got session cookie: ${cookie}"
-							}
-						}
-					} catch (e) {
-						log.warn "HPM: Cookie fetch failed: ${e}"
-					}
-					
-					login()
-					
-					// Use the import endpoint instead of update
-					def rawUrl = "https://raw.githubusercontent.com/${GITHUB_REPO}/main/apps/Package_Manager.groovy"
-					def importParams = [
-						uri: getBaseUrl(),
-						path: "/app/ajax/importUrl",
-						requestContentType: "application/x-www-form-urlencoded",
-						headers: [
-							"Connection": "keep-alive",
-							"Cookie": state.cookie
-						],
-						body: [
-							id: app.id,
-							url: rawUrl
-						],
-						timeout: 420,
-						ignoreSSLIssues: true
-					]
-					def result = false
-					httpPost(importParams) { importResp ->
-						log.info "HPM: Import response: ${importResp.data}"
-						result = importResp.data.status == "success"
-						if (!result) {
-							log.error "HPM: Import failed: ${importResp.data}"
-						}
-					}
-					
-					state.hpmUpdateResult = result ? "success" : "error"
-					if (!result) {
-						state.hpmUpdateError = "Import failed - please update manually from GitHub"
-					}
+				// Find HPM's own manifest location
+				def hpmLocation = state.repositoryListingJSON?.hpm?.location
+				if (!hpmLocation) {
+					log.error "HPM: Could not find HPM manifest location"
+					state.hpmUpdateResult = "error"
+					state.hpmUpdateError = "Could not find HPM manifest location"
+					return prefOptions()
 				}
+				
+				log.info "HPM: HPM manifest location: ${hpmLocation}"
+				
+				// Set pkgRepair to HPM's location and trigger the existing repair flow
+				app.updateSetting("pkgRepair", hpmLocation)
+				atomicState.backgroundActionInProgress = null
+				atomicState.hpmUpgraded = true
+				
+				return prefPkgRepairExecute()
 			} catch (Exception e) {
 				log.error "HPM: Update failed: ${e.message}"
 				state.hpmUpdateResult = "error"
 				state.hpmUpdateError = e.message
+				return prefOptions()
 			}
-			return prefOptions()
 			break
 		case "btnUpdateHpm":
 			// Self-update not supported due to Hubitat database constraints
