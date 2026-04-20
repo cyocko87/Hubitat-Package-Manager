@@ -292,14 +292,26 @@ def appButtonHandler(btn) {
 							def appId = app.id
 							log.info "HPM: Upgrading app ${appId}..."
 							
-							// Login to establish session for getAppVersion
-							if (!login()) {
-								log.error "HPM: Failed to login to hub"
-								state.hpmUpdateProgress = null
-								state.hpmUpdateResult = "error"
-								state.hpmUpdateError = "Failed to login to hub - check Hub Security settings"
-								return
+							// Get session cookie even if security is disabled
+							try {
+								httpGet([
+									uri: getBaseUrl(),
+									path: "/app/list",
+									textParser: true,
+									ignoreSSLIssues: true
+								]) { resp ->
+									def cookie = resp?.headers?.'Set-Cookie'?.split(';')?.getAt(0)
+									if (cookie) {
+										state.cookie = cookie
+										log.info "HPM: Got session cookie: ${cookie}"
+									}
+								}
+							} catch (e) {
+								log.warn "HPM: Could not get session cookie: ${e}"
 							}
+							
+							// Login in case security IS enabled
+							login()
 							
 							log.info "HPM: Cookie after login: ${state.cookie}"
 							
