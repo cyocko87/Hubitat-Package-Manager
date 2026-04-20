@@ -3599,13 +3599,19 @@ String getGithubToken() {
 String getHubCommitHash() {
 	// Extract commit hash from file header comments automatically
 	// This avoids hardcoding and always matches the running version
-	def commitPattern = /\*\s+\@Field\s+static\s+final\s+String\s+GITHUB_REPO\s+=\s+"[a-zA-Z0-9-]+\/[a-zA-Z0-9-]+"\s+([a-f0-9]{40})/
+	def commitPattern = /\*\s*@\s*Field\s+static\s+final\s+String\s+GITHUB_REPO\s+=\s+"[a-zA-Z0-9-]+\/[a-zA-Z0-9-]+"\s+([a-f0-9]{40})/
 	def matcher = (app.properties?.sourceCode?.text =~ commitPattern)
 	if (matcher.find()) {
 		return matcher[0][1]
 	}
+	// Try alternate pattern without @ prefix
+	def altPattern = /GITHUB_REPO\s+=\s+"[a-zA-Z0-9-]+\/[a-zA-Z0-9-]+"\s+([a-f0-9]{40})/
+	def altMatcher = (app.properties?.sourceCode?.text =~ altPattern)
+	if (altMatcher.find()) {
+		return altMatcher[0][1]
+	}
 	// Fallback if unable to parse from source
-	return getAppVersion(app.id) ?: "unknown"
+	return version() ?: "unknown"
 }
 
 def downloadFile(file) {
