@@ -312,11 +312,11 @@ def appButtonHandler(btn) {
 								ignoreSSLIssues: true
 							]
 							def result = false
-							httpPost(updateParams) { resp ->
-								log.info "HPM: Upgrade API response: ${resp.data}"
-								result = resp.data.status == "success"
+							httpPost(updateParams) { updateResp ->
+								log.info "HPM: Upgrade API response: ${updateResp.data}"
+								result = updateResp.data.status == "success"
 								if (!result) {
-									log.error "HPM: Upgrade API error: ${resp.data}"
+									log.error "HPM: Upgrade API error: ${updateResp.data}"
 								}
 							}
 							
