@@ -344,74 +344,11 @@ def appButtonHandler(btn) {
 			return prefOptions()
 			break
 		case "btnUpdateHpm":
-			try {
-				state.hpmUpdateProgress = "downloading"
-				state.hpmUpdateResult = null
-				log.info "HPM: Starting update download..."
-				def latestCode = downloadFile("https://raw.githubusercontent.com/${GITHUB_REPO}/main/apps/Package_Manager.groovy")
-				log.info "HPM: Downloaded code length: ${latestCode?.length()}"
-				if (latestCode) {
-					// Basic validation
-					if (!latestCode.contains("definition(") || !latestCode.contains("preferences {")) {
-						log.error "HPM: Downloaded code appears invalid"
-						state.hpmUpdateProgress = null
-						state.hpmUpdateResult = "error"
-						state.hpmUpdateError = "Downloaded code appears invalid"
-						break
-					}
-					
-					state.hpmUpdateProgress = "upgrading"
-					def appId = app.id
-					log.info "HPM: Upgrading app ${appId}..."
-					
-					// Use version() instead of getAppVersion for self-update
-					def appVersion = version()
-					log.info "HPM: Using version ${appVersion} for update"
-					
-					def params = [
-						uri: getBaseUrl(),
-						path: "/app/ajax/update",
-						requestContentType: "application/x-www-form-urlencoded",
-						headers: [
-							"Connection": 'keep-alive',
-							"Cookie": state.cookie
-						],
-						body: [
-							id: appId,
-							version: appVersion,
-							source: latestCode
-						],
-						timeout: 420,
-						ignoreSSLIssues: true
-					]
-					def result = false
-					httpPost(params) { resp ->
-						log.info "HPM: Upgrade API response: ${resp.data}"
-						result = resp.data.status == "success"
-						if (!result) {
-							log.error "HPM: Upgrade API error: ${resp.data}"
-						}
-					}
-					
-					log.info "HPM: Update result: ${result}"
-					state.hpmUpdateProgress = null
-					if (result) {
-						state.hpmUpdateResult = "success"
-					} else {
-						state.hpmUpdateResult = "error"
-						state.hpmUpdateError = "Update API returned failure - try manual update from GitHub"
-					}
-				} else {
-					state.hpmUpdateProgress = null
-					state.hpmUpdateResult = "error"
-					state.hpmUpdateError = "Failed to download code"
-				}
-			} catch (Exception e) {
-				log.error "HPM: Update failed: ${e.message}"
-				state.hpmUpdateProgress = null
-				state.hpmUpdateResult = "error"
-				state.hpmUpdateError = e.message
-			}
+			// Self-update not supported due to Hubitat database constraints
+			log.info "HPM: Self-update not supported"
+			state.hpmUpdateResult = "error"
+			state.hpmUpdateError = "Self-update not supported - please update manually from GitHub"
+			return prefOptions()
 			break
 	}
 }
@@ -5175,19 +5112,19 @@ def displayHeader(def txt = '') {
 		<div style='color:#1A77C9;text-align:right;font-weight:small;font-size:9px;'>
 			Developed by: DCMeglio<br/>
 			Current Version: ${version()} -  ${thisCopyright}<br/>
-			<a href='https://github.com/${GITHUB_REPO}' target='_blank'>View on GitHub</a> | <a href='https://github.com/${GITHUB_REPO}/commits/main' target='_blank'>Check Latest Commit</a>
+			<a href='https://github.com/${GITHUB_REPO}' target='_blank'>View on GitHub</a>
 		</div>
 		"""
 		
-		// Always show update option
-		paragraph "<span style='color:green;font-weight:bold;'>Update HPM from GitHub</span>"
-		input "btnCheckHpmUpdates", "button", title: "Check Latest & Update", width: 3
-		paragraph "<span style='color:gray;font-size:10px;'>Note: Self-update may fail due to Hubitat constraints. If update fails, update manually from GitHub.</span>"
+		// Manual update instructions
+		paragraph "<span style='color:green;font-weight:bold;'>Update HPM</span>"
+		paragraph "<a href='https://raw.githubusercontent.com/${GITHUB_REPO}/main/apps/Package_Manager.groovy' target='_blank' style='color:#1A77C9;font-weight:bold;'>Download Latest Code from GitHub</a>"
+		paragraph "<span style='color:gray;font-size:10px;'>To update: Download the code, paste it into the Hubitat app editor, and save.</span>"
 		
 		if (state.hpmUpdateResult == "success") {
 			paragraph "<span style='color:green;font-weight:bold;'>✓ Update complete! HPM has been upgraded successfully.</span>"
 		} else if (state.hpmUpdateResult == "error") {
-			paragraph "<span style='color:red;'>✗ Update failed: ${state.hpmUpdateError}</span>"
+			paragraph "<span style='color:red;'>✗ ${state.hpmUpdateError}</span>"
 		}
 		paragraph "\n<hr style='background-color:#1A77C9; height: 1px; border: 0;'></hr>"
 	}
