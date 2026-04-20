@@ -5116,10 +5116,11 @@ def displayHeader(def txt = '') {
 		</div>
 		"""
 		
-		// Manual update instructions
-		paragraph "<span style='color:green;font-weight:bold;'>Update HPM</span>"
-		paragraph "<a href='https://raw.githubusercontent.com/${GITHUB_REPO}/main/apps/Package_Manager.groovy' target='_blank' style='color:#1A77C9;font-weight:bold;'>Download Latest Code from GitHub</a>"
-		paragraph "<span style='color:gray;font-size:10px;'>To update: Download the code, paste it into the Hubitat app editor, and save.</span>"
+		// Update option
+		paragraph "<span style='color:green;font-weight:bold;'>Update HPM from GitHub</span>"
+		input "btnCheckHpmUpdates", "button", title: "Check Latest & Update", width: 3
+		paragraph "<span style='color:gray;font-size:10px;'>Note: Self-update may fail due to Hubitat constraints. If update fails, update manually from GitHub.</span>"
+		paragraph "<a href='https://raw.githubusercontent.com/${GITHUB_REPO}/main/apps/Package_Manager.groovy' target='_blank' style='color:#1A77C9;font-weight:bold;'>Manual Download</a>"
 		
 		if (state.hpmUpdateResult == "success") {
 			paragraph "<span style='color:green;font-weight:bold;'>✓ Update complete! HPM has been upgraded successfully.</span>"
