@@ -28,7 +28,7 @@
  *                         refactored delete app to use new endpoint
  *    csteele v1.9.2    added 'Connection': 'keep-alive' to install/uninstall Apps, Drivers and Bundles
  *                         extended timeout to 7 min (420 seconds) 
- *                         Take advantage of v2.3.8 Bundle install/uninstall 
+ *                         Take advantage of endpoint in v2.3.8 Bundle install/uninstall 
  *    csteele v1.9.1    updatePackage() ignores blank app or driver definitions
  *                         Take advantage of endpoints in v2.3.7 for app and driver uninstall 
  *                         take advantage of endpoint for driver code list in v2.3.6 
@@ -255,6 +255,7 @@ def appButtonHandler(btn) {
 		return prefPkgMatchUpVerify()
 		break
 		case "btnCheckHpmUpdates":
+			state.hpmUpdateCheck = "checking"
 			try {
 				def params = [
 					uri: "https://api.github.com/repos/${GITHUB_REPO}/commits/main",
@@ -263,19 +264,14 @@ def appButtonHandler(btn) {
 				githubInjectAuth(params)
 				
 				httpGet(params) { resp ->
-					def latestCommit = resp.data.sha
-					def currentCommit = getHubCommitHash()
-					
-					if (latestCommit != currentCommit) {
-						def latestVersion = resp.data.commit.message.take(60)
-						paragraph "<span style='color:green;font-weight:bold;'>✓ New version available</span><br>Latest commit: <code>${latestCommit.take(8)}</code><br>${latestVersion}"
-						input "btnUpdateHpm", "button", title: "Update Now", width: 3
-					} else {
-						paragraph "<span style='color:green;'>✓ You are running the latest version</span><br>Commit: <code>${currentCommit.take(8)}</code>"
-					}
+					state.hpmUpdateCheck = "done"
+					state.hpmLatestCommit = resp.data.sha
+					state.hpmCurrentCommit = getHubCommitHash()
+					state.hpmLatestMessage = resp.data.commit.message?.take(60) ?: ""
 				}
 			} catch (Exception e) {
-				paragraph "<span style='color:red;'>✗ Could not check for updates: ${e.message}</span>"
+				state.hpmUpdateCheck = "error"
+				state.hpmUpdateError = e.message
 			}
 			break
 		case "btnUpdateHpm":
@@ -586,6 +582,19 @@ def prefSettings(params) {
 			section ("<b>Application Update</b>") {
 				paragraph "Check for latest updates directly from GitHub repository"
 				input "btnCheckHpmUpdates", "button", title: "Check for Updates", width: 3
+				
+				if (state.hpmUpdateCheck == "checking") {
+					paragraph "<span style='color:blue;'>Checking for updates...</span>"
+				} else if (state.hpmUpdateCheck == "done") {
+					if (state.hpmLatestCommit != state.hpmCurrentCommit) {
+						paragraph "<span style='color:green;font-weight:bold;'>✓ New version available</span><br>Latest commit: <code>${state.hpmLatestCommit.take(8)}</code><br>${state.hpmLatestMessage}"
+						input "btnUpdateHpm", "button", title: "Update Now", width: 3
+					} else {
+						paragraph "<span style='color:green;'>✓ You are running the latest version</span><br>Commit: <code>${state.hpmCurrentCommit.take(8)}</code>"
+					}
+				} else if (state.hpmUpdateCheck == "error") {
+					paragraph "<span style='color:red;'>✗ Could not check for updates: ${state.hpmUpdateError}</span>"
+				}
 			}
 		}
 		}
