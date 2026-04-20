@@ -280,10 +280,14 @@ def appButtonHandler(btn) {
 				if (latestCode) {
 					def appId = app.id
 					upgradeApp(appId, latestCode)
-					paragraph "<span style='color:green;font-weight:bold;'>✓ Update complete! HPM has been upgraded successfully.</span>"
+					state.hpmUpdateResult = "success"
+				} else {
+					state.hpmUpdateResult = "error"
+					state.hpmUpdateError = "Failed to download code"
 				}
 			} catch (Exception e) {
-				paragraph "<span style='color:red;'>✗ Update failed: ${e.message}</span>"
+				state.hpmUpdateResult = "error"
+				state.hpmUpdateError = e.message
 			}
 			break
 	}
@@ -594,6 +598,12 @@ def prefSettings(params) {
 					}
 				} else if (state.hpmUpdateCheck == "error") {
 					paragraph "<span style='color:red;'>✗ Could not check for updates: ${state.hpmUpdateError}</span>"
+				}
+				
+				if (state.hpmUpdateResult == "success") {
+					paragraph "<span style='color:green;font-weight:bold;'>✓ Update complete! HPM has been upgraded successfully.</span>"
+				} else if (state.hpmUpdateResult == "error") {
+					paragraph "<span style='color:red;'>✗ Update failed: ${state.hpmUpdateError}</span>"
 				}
 			}
 
