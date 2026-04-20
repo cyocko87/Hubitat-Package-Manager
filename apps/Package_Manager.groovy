@@ -54,10 +54,10 @@
  *    csteele v1.8.4     Migrated to HubitatCommunity
  *                         added txtEnable to silence log.info messages
  *                         use httpS for Fast Search
- *    csteele v1.8.3     No change here. Changes were to Dominic's repo to cause an upgrade to here
- *    csteele v1.8.2.A   Converted to using HubitatCommunity.com as the search resource. [Lines 66-67 & 379-380]
+ *    csteele  v1.8.2.A   Converted to using HubitatCommunity.com as the search resource. [Lines 66-67 & 379-380]
  *                         added footer to display version and copyright fields
  *                         added feature to identify Azure search vs sql search
+ *    @Field static final String GITHUB_REPO = "cyocko87/Hubitat-Package-Manager" c4d2713de6f21216f4cbdb28174f27292d27f11e
  */
 
 	public static String version()      {  return "v1.9.11"  }
@@ -595,6 +595,11 @@ def prefSettings(params) {
 				} else if (state.hpmUpdateCheck == "error") {
 					paragraph "<span style='color:red;'>✗ Could not check for updates: ${state.hpmUpdateError}</span>"
 				}
+			}
+
+			section ("<b>Install Code</b>") {
+				paragraph "Copy the clean install URL (without repository settings) to avoid 414 errors"
+				paragraph "<a href='https://raw.githubusercontent.com/${GITHUB_REPO}/main/apps/Package_Manager.groovy' target='_blank' style='color:#1A77C9;font-weight:bold;'>https://raw.githubusercontent.com/${GITHUB_REPO}/main/apps/Package_Manager.groovy</a>"
 			}
 		}
 		}
