@@ -292,7 +292,7 @@ def appButtonHandler(btn) {
 							def appId = app.id
 							log.info "HPM: Upgrading app ${appId}..."
 							
-							def appVersion = version()
+							def appVersion = getAppVersion(appId)
 							log.info "HPM: Using version ${appVersion} for update"
 							
 							def updateParams = [
