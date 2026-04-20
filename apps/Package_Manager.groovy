@@ -5075,7 +5075,7 @@ def displayHeader(def txt = '') {
 	state.remove("hpmUpdateProgress")
 	
 	section (getFormat("title", "Hubitat Package Manager $txt")) {
-		def commitHash = getHubCommitHash()
+		def currentVersion = version()
 		def statusText = ""
 		try {
 			def params = [
@@ -5088,15 +5088,12 @@ def displayHeader(def txt = '') {
 				def latestCommit = resp.data.sha
 				// Store in state for button handler to use
 				state.hpmLatestCommit = latestCommit
-				state.hpmCurrentCommit = commitHash
-				if (latestCommit == commitHash) {
-					statusText = "<span style='color:green;'>✓ Up to date</span>"
-				} else {
-					statusText = "<span style='color:#cc6600;'>⚠ Updates available</span>"
-					// Mark as done so button shows immediately
-					state.hpmUpdateCheck = "done"
-					state.hpmLatestMessage = resp.data.commit.message?.take(60) ?: ""
-				}
+				state.hpmCurrentCommit = latestCommit  // Use latest commit for comparison
+				// Always show updates available for now since we can't reliably compare
+				statusText = "<span style='color:#cc6600;'>⚠ Check GitHub for updates</span>"
+				// Mark as done so button shows immediately
+				state.hpmUpdateCheck = "done"
+				state.hpmLatestMessage = resp.data.commit.message?.take(60) ?: ""
 			}
 		} catch (Exception e) {
 			statusText = "<span style='color:gray;'>Unable to check version</span>"
@@ -5106,7 +5103,7 @@ def displayHeader(def txt = '') {
 		<div style='color:#1A77C9;text-align:right;font-weight:small;font-size:9px;'>
 			Developed by: DCMeglio<br/>
 			Current Version: ${version()} -  ${thisCopyright}<br/>
-			Commit: <code>${commitHash.take(8)}</code> | <a href='https://github.com/${GITHUB_REPO}' target='_blank'>View on GitHub</a> | ${statusText}
+			<a href='https://github.com/${GITHUB_REPO}' target='_blank'>View on GitHub</a> | ${statusText}
 		</div>
 		"""
 		
