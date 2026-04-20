@@ -258,125 +258,75 @@ def appButtonHandler(btn) {
 		return prefPkgMatchUpVerify()
 		break
 		case "btnCheckHpmUpdates":
-			// Check latest commit and update in one step
+			// Use importUrl endpoint to bypass Hubitat self-modification restriction
 			try {
-				state.hpmUpdateProgress = "checking"
 				state.hpmUpdateResult = null
 				state.hpmUpdateError = null
 				
 				log.info "HPM: Checking latest commit from GitHub..."
-				def params = [
+				def commitParams = [
 					uri: "https://api.github.com/repos/${GITHUB_REPO}/commits/main",
 					timeout: 10
 				]
-				githubInjectAuth(params)
+				githubInjectAuth(commitParams)
 				
-				httpGet(params) { resp ->
+				httpGet(commitParams) { resp ->
 					def latestCommit = resp.data.sha
-					def commitMessage = resp.data.commit.message?.take(60) ?: ""
-					log.info "HPM: Latest commit is ${latestCommit.take(8)}: ${commitMessage}"
+					log.info "HPM: Latest commit is ${latestCommit.take(8)}: ${resp.data.commit.message?.take(60)}"
 					
-					// Download and update
-					state.hpmUpdateProgress = "downloading"
-					def latestCode = downloadFile("https://raw.githubusercontent.com/${GITHUB_REPO}/main/apps/Package_Manager.groovy")
-					log.info "HPM: Downloaded code length: ${latestCode?.length()}"
-					
-					if (latestCode) {
-						if (!latestCode.contains("definition(") || !latestCode.contains("preferences {")) {
-							log.error "HPM: Downloaded code appears invalid"
-							state.hpmUpdateProgress = null
-							state.hpmUpdateResult = "error"
-							state.hpmUpdateError = "Downloaded code appears invalid"
-						} else {
-							state.hpmUpdateProgress = "upgrading"
-							def appId = app.id
-							log.info "HPM: Upgrading app ${appId}..."
-							
-							// Get session cookie even if security is disabled
-							try {
-								httpGet([
-									uri: getBaseUrl(),
-									path: "/app/list",
-									textParser: true,
-									ignoreSSLIssues: true
-								]) { listResp ->
-									def cookie = listResp?.headers?.'Set-Cookie'?.split(';')?.getAt(0)
-									if (cookie) {
-										state.cookie = cookie
-										log.info "HPM: Got session cookie: ${cookie}"
-									}
-								}
-							} catch (e) {
-								log.warn "HPM: Could not get session cookie: ${e}"
-							}
-							
-							// Login in case security IS enabled
-							login()
-							
-							log.info "HPM: Cookie after login: ${state.cookie}"
-							
-							// Fetch version inline to bypass getAppVersion() scoping issues
-							def appVersion = null
-							try {
-								httpGet([
-									uri: getBaseUrl(),
-									path: "/app/ajax/code",
-									requestContentType: "application/x-www-form-urlencoded",
-									headers: ["Cookie": state.cookie],
-									query: [id: appId],
-									ignoreSSLIssues: true
-								]) { codeResp ->
-									log.info "HPM: inline getAppVersion response: ${codeResp.data}"
-									appVersion = codeResp.data.version
-								}
-							} catch (e) {
-								log.error "HPM: inline getAppVersion failed: ${e}"
-							}
-							log.info "HPM: Using version ${appVersion} for update"
-							
-							def updateParams = [
-								uri: getBaseUrl(),
-								path: "/app/ajax/update",
-								requestContentType: "application/x-www-form-urlencoded",
-								headers: [
-									"Connection": 'keep-alive',
-									"Cookie": state.cookie
-								],
-								body: [
-									id: appId,
-									version: appVersion,
-									source: latestCode
-								],
-								timeout: 420,
-								ignoreSSLIssues: true
-							]
-							def result = false
-							httpPost(updateParams) { updateResp ->
-								log.info "HPM: Upgrade API response: ${updateResp.data}"
-								result = updateResp.data.status == "success"
-								if (!result) {
-									log.error "HPM: Upgrade API error: ${updateResp.data}"
-								}
-							}
-							
-							log.info "HPM: Update result: ${result}"
-							state.hpmUpdateProgress = null
-							if (result) {
-								state.hpmUpdateResult = "success"
-							} else {
-								state.hpmUpdateResult = "error"
-								state.hpmUpdateError = "Update API returned failure - try manual update from GitHub"
+					// Get session cookie
+					try {
+						httpGet([
+							uri: getBaseUrl(),
+							path: "/app/list",
+							textParser: true,
+							ignoreSSLIssues: true
+						]) { listResp ->
+							def cookie = listResp?.headers?.'Set-Cookie'?.split(';')?.getAt(0)
+							if (cookie) {
+								state.cookie = cookie
+								log.info "HPM: Got session cookie: ${cookie}"
 							}
 						}
-					} else {
-						state.hpmUpdateProgress = null
-						state.hpmUpdateResult = "error"
-						state.hpmUpdateError = "Failed to download code"
+					} catch (e) {
+						log.warn "HPM: Cookie fetch failed: ${e}"
+					}
+					
+					login()
+					
+					// Use the import endpoint instead of update
+					def rawUrl = "https://raw.githubusercontent.com/${GITHUB_REPO}/main/apps/Package_Manager.groovy"
+					def importParams = [
+						uri: getBaseUrl(),
+						path: "/app/ajax/importUrl",
+						requestContentType: "application/x-www-form-urlencoded",
+						headers: [
+							"Connection": "keep-alive",
+							"Cookie": state.cookie
+						],
+						body: [
+							id: app.id,
+							url: rawUrl
+						],
+						timeout: 420,
+						ignoreSSLIssues: true
+					]
+					def result = false
+					httpPost(importParams) { importResp ->
+						log.info "HPM: Import response: ${importResp.data}"
+						result = importResp.data.status == "success"
+						if (!result) {
+							log.error "HPM: Import failed: ${importResp.data}"
+						}
+					}
+					
+					state.hpmUpdateResult = result ? "success" : "error"
+					if (!result) {
+						state.hpmUpdateError = "Import failed - please update manually from GitHub"
 					}
 				}
 			} catch (Exception e) {
 				log.error "HPM: Update failed: ${e.message}"
-				state.hpmUpdateProgress = null
 				state.hpmUpdateResult = "error"
 				state.hpmUpdateError = e.message
 			}
