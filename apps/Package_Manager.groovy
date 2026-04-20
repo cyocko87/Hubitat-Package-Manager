@@ -269,6 +269,22 @@ def appButtonHandler(btn) {
 				def hpmManifestUrl = "https://raw.githubusercontent.com/${GITHUB_REPO}/main/packageManifest.json"
 				log.info "HPM: HPM manifest URL: ${hpmManifestUrl}"
 				
+				// Ensure HPM is registered in state.manifests before repair
+				if (state.manifests[hpmManifestUrl] == null) {
+					log.info "HPM: HPM not in manifests, registering..."
+					installHPMManifest()
+				}
+				
+				// Verify it's now there
+				if (state.manifests[hpmManifestUrl] == null) {
+					log.error "HPM: HPM manifest not found after installHPMManifest()"
+					state.hpmUpdateResult = "error"
+					state.hpmUpdateError = "Could not register HPM manifest - try Match Up first"
+					return prefOptions()
+				}
+				
+				log.info "HPM: HPM manifest found, triggering repair..."
+				
 				// Set pkgRepair to HPM's manifest URL and trigger the existing repair flow
 				app.updateSetting("pkgRepair", hpmManifestUrl)
 				atomicState.backgroundActionInProgress = null
