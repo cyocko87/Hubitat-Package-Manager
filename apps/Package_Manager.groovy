@@ -593,30 +593,6 @@ def prefSettings(params) {
 				input "btnUnMatch", "button", title: "Remove a Matched Package"
 			}
 
-			section ("<b>Application Update</b>") {
-				paragraph "Check for latest updates directly from GitHub repository"
-				input "btnCheckHpmUpdates", "button", title: "Check for Updates", width: 3
-				
-				if (state.hpmUpdateCheck == "checking") {
-					paragraph "<span style='color:blue;'>Checking for updates...</span>"
-				} else if (state.hpmUpdateCheck == "done") {
-					if (state.hpmLatestCommit != state.hpmCurrentCommit) {
-						paragraph "<span style='color:green;font-weight:bold;'>✓ New version available</span><br>Latest commit: <code>${state.hpmLatestCommit.take(8)}</code><br>${state.hpmLatestMessage}"
-						input "btnUpdateHpm", "button", title: "Update Now", width: 3
-					} else {
-						paragraph "<span style='color:green;'>✓ You are running the latest version</span><br>Commit: <code>${state.hpmCurrentCommit.take(8)}</code>"
-					}
-				} else if (state.hpmUpdateCheck == "error") {
-					paragraph "<span style='color:red;'>✗ Could not check for updates: ${state.hpmUpdateError}</span>"
-				}
-				
-				if (state.hpmUpdateResult == "success") {
-					paragraph "<span style='color:green;font-weight:bold;'>✓ Update complete! HPM has been upgraded successfully.</span>"
-				} else if (state.hpmUpdateResult == "error") {
-					paragraph "<span style='color:red;'>✗ Update failed: ${state.hpmUpdateError}</span>"
-				}
-			}
-
 			section ("<b>Install Code</b>") {
 				paragraph "Copy the clean install URL (without repository settings) to avoid 414 errors"
 				paragraph "<a href='https://raw.githubusercontent.com/${GITHUB_REPO}/main/apps/Package_Manager.groovy' target='_blank' style='color:#1A77C9;font-weight:bold;'>https://raw.githubusercontent.com/${GITHUB_REPO}/main/apps/Package_Manager.groovy</a>"
@@ -4825,7 +4801,7 @@ def installHPMManifest() {
 			log.error "Error installing HPM manifest"
 			return false
 		}
-		def appId = appsInstalled.find { i -> i.title == "Hubitat Package Manager" && i.namespace == "dcm.hpm"}?.id
+		def appId = appsInstalled.find { i -> (i.title == "Hubitat Package Manager" || i.title == "HPM - Hubitat Package Manager (Testing)") && i.namespace == "dcm.hpm"}?.id
 		if (appId != null) {
 			manifest.apps[0].heID = appId
 			state.manifests[state.repositoryListingJSON.hpm.location] = manifest
@@ -5098,6 +5074,27 @@ def displayHeader(def txt = '') {
 			Commit: <code>${commitHash.take(8)}</code> | <a href='https://github.com/${GITHUB_REPO}' target='_blank'>View on GitHub</a> | ${statusText}
 		</div>
 		"""
+		
+		if (state.hpmUpdateCheck == "checking") {
+			paragraph "<span style='color:blue;'>Checking for updates...</span>"
+		} else if (state.hpmUpdateCheck == "done") {
+			if (state.hpmLatestCommit != state.hpmCurrentCommit) {
+				paragraph "<span style='color:green;font-weight:bold;'>✓ New version available</span><br>Latest commit: <code>${state.hpmLatestCommit.take(8)}</code><br>${state.hpmLatestMessage}"
+				input "btnUpdateHpm", "button", title: "Update Now", width: 3
+			} else {
+				paragraph "<span style='color:green;'>✓ You are running the latest version</span><br>Commit: <code>${state.hpmCurrentCommit.take(8)}</code>"
+			}
+		} else if (state.hpmUpdateCheck == "error") {
+			paragraph "<span style='color:red;'>✗ Could not check for updates: ${state.hpmUpdateError}</span>"
+		}
+		
+		if (state.hpmUpdateResult == "success") {
+			paragraph "<span style='color:green;font-weight:bold;'>✓ Update complete! HPM has been upgraded successfully.</span>"
+		} else if (state.hpmUpdateResult == "error") {
+			paragraph "<span style='color:red;'>✗ Update failed: ${state.hpmUpdateError}</span>"
+		}
+		
+		input "btnCheckHpmUpdates", "button", title: "Check for Updates", width: 3
 		paragraph "\n<hr style='background-color:#1A77C9; height: 1px; border: 0;'></hr>"
 	}
 }
