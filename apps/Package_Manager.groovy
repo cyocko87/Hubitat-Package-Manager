@@ -325,9 +325,9 @@ def appButtonHandler(btn) {
 									headers: ["Cookie": state.cookie],
 									query: [id: appId],
 									ignoreSSLIssues: true
-								]) { resp ->
-									log.info "HPM: inline getAppVersion response: ${resp.data}"
-									appVersion = resp.data.version
+								]) { codeResp ->
+									log.info "HPM: inline getAppVersion response: ${codeResp.data}"
+									appVersion = codeResp.data.version
 								}
 							} catch (e) {
 								log.error "HPM: inline getAppVersion failed: ${e}"
