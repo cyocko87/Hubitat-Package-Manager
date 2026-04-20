@@ -5050,6 +5050,15 @@ def getFormat(type, myText=""){            // Modified from @Stephack Code
 }
 
 def displayHeader(def txt = '') {
+	// Clear stale update state on page load
+	state.remove("hpmUpdateCheck")
+	state.remove("hpmLatestCommit")
+	state.remove("hpmCurrentCommit")
+	state.remove("hpmLatestMessage")
+	state.remove("hpmUpdateResult")
+	state.remove("hpmUpdateError")
+	state.remove("hpmUpdateProgress")
+	
 	section (getFormat("title", "Hubitat Package Manager $txt")) {
 		def commitHash = getHubCommitHash()
 		def statusText = ""
@@ -5062,10 +5071,16 @@ def displayHeader(def txt = '') {
 			
 			httpGet(params) { resp ->
 				def latestCommit = resp.data.sha
+				// Store in state for button handler to use
+				state.hpmLatestCommit = latestCommit
+				state.hpmCurrentCommit = commitHash
 				if (latestCommit == commitHash) {
 					statusText = "<span style='color:green;'>✓ Up to date</span>"
 				} else {
 					statusText = "<span style='color:#cc6600;'>⚠ Updates available</span>"
+					// Mark as done so button shows immediately
+					state.hpmUpdateCheck = "done"
+					state.hpmLatestMessage = resp.data.commit.message?.take(60) ?: ""
 				}
 			}
 		} catch (Exception e) {
