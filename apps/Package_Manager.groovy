@@ -175,16 +175,19 @@ def upgradeApp(id,appCode) {
 		]
 		def result = false
 		httpPost(params) { resp ->
+			log.info "HPM: Upgrade API response: ${resp.data}"
 			result = resp.data.status == "success"
+			if (!result) {
+				log.error "HPM: Upgrade API error: ${resp.data}"
+			}
 		}
 		return result
 	}
 	catch (e) {
 		log.error "Error upgrading app: ${e}"
+		return false
 	}
-	return null
 }
-
 def installed() {
 	initialize()
 }
@@ -256,6 +259,9 @@ def appButtonHandler(btn) {
 		break
 		case "btnCheckHpmUpdates":
 			state.hpmUpdateCheck = "checking"
+			state.hpmUpdateResult = null  // Clear old update result
+			state.hpmUpdateError = null  // Clear old error
+			state.hpmUpdateProgress = null  // Clear old progress
 			try {
 				def params = [
 					uri: "https://api.github.com/repos/${GITHUB_REPO}/commits/main",
@@ -277,6 +283,7 @@ def appButtonHandler(btn) {
 		case "btnUpdateHpm":
 			try {
 				state.hpmUpdateProgress = "downloading"
+				state.hpmUpdateResult = null
 				log.info "HPM: Starting update download..."
 				def latestCode = downloadFile("https://raw.githubusercontent.com/${GITHUB_REPO}/main/apps/Package_Manager.groovy")
 				log.info "HPM: Downloaded code length: ${latestCode?.length()}"
@@ -286,21 +293,22 @@ def appButtonHandler(btn) {
 					log.info "HPM: Upgrading app ${appId}..."
 					def updateResult = upgradeApp(appId, latestCode)
 					log.info "HPM: Update result: ${updateResult}"
-					state.hpmUpdateProgress = "done"
 					if (updateResult) {
+						state.hpmUpdateProgress = "done"
 						state.hpmUpdateResult = "success"
 					} else {
+						state.hpmUpdateProgress = null  // Clear progress so button shows again
 						state.hpmUpdateResult = "error"
 						state.hpmUpdateError = "Update API returned failure"
 					}
 				} else {
-					state.hpmUpdateProgress = "error"
+					state.hpmUpdateProgress = null  // Clear progress so button shows again
 					state.hpmUpdateResult = "error"
 					state.hpmUpdateError = "Failed to download code"
 				}
 			} catch (Exception e) {
 				log.error "HPM: Update failed: ${e.message}"
-				state.hpmUpdateProgress = "error"
+				state.hpmUpdateProgress = null  // Clear progress so button shows again
 				state.hpmUpdateResult = "error"
 				state.hpmUpdateError = e.message
 			}
@@ -3590,18 +3598,25 @@ String getGithubToken() {
 String getHubCommitHash() {
 	// Extract commit hash from file header comments automatically
 	// This avoids hardcoding and always matches the running version
-	def commitPattern = /\*\s*@\s*Field\s+static\s+final\s+String\s+GITHUB_REPO\s+=\s+"[a-zA-Z0-9-]+\/[a-zA-Z0-9-]+"\s+([a-f0-9]{40})/
+	def commitPattern = /\*\s+@Field\s+static\s+final\s+String\s+GITHUB_REPO\s+=\s+"[a-zA-Z0-9-]+\/[a-zA-Z0-9-]+"\s+([a-f0-9]{40})/
 	def matcher = (app.properties?.sourceCode?.text =~ commitPattern)
 	if (matcher.find()) {
 		return matcher[0][1]
 	}
-	// Try alternate pattern without @ prefix
-	def altPattern = /GITHUB_REPO\s+=\s+"[a-zA-Z0-9-]+\/[a-zA-Z0-9-]+"\s+([a-f0-9]{40})/
+	// Try alternate pattern with @ separated by space
+	def altPattern = /\*\s+@\s*Field\s+static\s+final\s+String\s+GITHUB_REPO\s+=\s+"[a-zA-Z0-9-]+\/[a-zA-Z0-9-]+"\s+([a-f0-9]{40})/
 	def altMatcher = (app.properties?.sourceCode?.text =~ altPattern)
 	if (altMatcher.find()) {
 		return altMatcher[0][1]
 	}
+	// Try pattern without @ prefix
+	def altPattern2 = /GITHUB_REPO\s+=\s+"[a-zA-Z0-9-]+\/[a-zA-Z0-9-]+"\s+([a-f0-9]{40})/
+	def altMatcher2 = (app.properties?.sourceCode?.text =~ altPattern2)
+	if (altMatcher2.find()) {
+		return altMatcher2[0][1]
+	}
 	// Fallback if unable to parse from source
+	log.warn "HPM: Could not extract commit hash from source, using version"
 	return version() ?: "unknown"
 }
 
@@ -5104,9 +5119,9 @@ def displayHeader(def txt = '') {
 					paragraph "<span style='color:blue;'>Downloading update...</span>"
 				} else if (state.hpmUpdateProgress == "upgrading") {
 					paragraph "<span style='color:blue;'>Upgrading app...</span>"
-				} else if (state.hpmUpdateProgress == "done") {
-					paragraph "<span style='color:blue;'>Update complete</span>"
 				} else {
+					// Clear progress state so button always shows when updates are available
+					state.hpmUpdateProgress = null
 					input "btnUpdateHpm", "button", title: "Update Now", width: 3
 				}
 			} else {
