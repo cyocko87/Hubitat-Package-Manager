@@ -315,7 +315,23 @@ def appButtonHandler(btn) {
 							
 							log.info "HPM: Cookie after login: ${state.cookie}"
 							
-							def appVersion = getAppVersion(appId)
+							// Fetch version inline to bypass getAppVersion() scoping issues
+							def appVersion = null
+							try {
+								httpGet([
+									uri: getBaseUrl(),
+									path: "/app/ajax/code",
+									requestContentType: "application/x-www-form-urlencoded",
+									headers: ["Cookie": state.cookie],
+									query: [id: appId],
+									ignoreSSLIssues: true
+								]) { resp ->
+									log.info "HPM: inline getAppVersion response: ${resp.data}"
+									appVersion = resp.data.version
+								}
+							} catch (e) {
+								log.error "HPM: inline getAppVersion failed: ${e}"
+							}
 							log.info "HPM: Using version ${appVersion} for update"
 							
 							def updateParams = [
