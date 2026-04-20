@@ -265,19 +265,12 @@ def appButtonHandler(btn) {
 				
 				log.info "HPM: Triggering self-update via repair pathway..."
 				
-				// Find HPM's own manifest location
-				def hpmLocation = state.repositoryListingJSON?.hpm?.location
-				if (!hpmLocation) {
-					log.error "HPM: Could not find HPM manifest location"
-					state.hpmUpdateResult = "error"
-					state.hpmUpdateError = "Could not find HPM manifest location"
-					return prefOptions()
-				}
+				// Use correct repository (GITHUB_REPO) for HPM manifest
+				def hpmManifestUrl = "https://raw.githubusercontent.com/${GITHUB_REPO}/main/packageManifest.json"
+				log.info "HPM: HPM manifest URL: ${hpmManifestUrl}"
 				
-				log.info "HPM: HPM manifest location: ${hpmLocation}"
-				
-				// Set pkgRepair to HPM's location and trigger the existing repair flow
-				app.updateSetting("pkgRepair", hpmLocation)
+				// Set pkgRepair to HPM's manifest URL and trigger the existing repair flow
+				app.updateSetting("pkgRepair", hpmManifestUrl)
 				atomicState.backgroundActionInProgress = null
 				atomicState.hpmUpgraded = true
 				
@@ -5059,6 +5052,30 @@ def displayHeader(def txt = '') {
 	state.remove("hpmUpdateError")
 	state.remove("hpmUpdateProgress")
 	
+	// Check latest version from GitHub
+	def currentVersion = version()
+	def latestCommit = ""
+	def latestMessage = ""
+	def updateAvailable = false
+	
+	try {
+		def params = [
+			uri: "https://api.github.com/repos/${GITHUB_REPO}/commits/main",
+			timeout: 10
+		]
+		githubInjectAuth(params)
+		
+		httpGet(params) { resp ->
+			latestCommit = resp.data.sha
+			latestMessage = resp.data.commit.message?.take(60) ?: ""
+			// Store in state for comparison
+			state.hpmLatestCommit = latestCommit
+			state.hpmLatestMessage = latestMessage
+		}
+	} catch (Exception e) {
+		log.warn "HPM: Could not check GitHub for updates: ${e.message}"
+	}
+	
 	section (getFormat("title", "Hubitat Package Manager $txt")) {
 		paragraph """
 		<div style='color:#1A77C9;text-align:right;font-weight:small;font-size:9px;'>
@@ -5068,10 +5085,15 @@ def displayHeader(def txt = '') {
 		</div>
 		"""
 		
+		// Version status
+		if (latestCommit) {
+			paragraph "<span style='color:green;font-weight:bold;'>Latest commit: <code>${latestCommit.take(8)}</code></span>"
+			paragraph "<span style='color:gray;font-size:10px;'>${latestMessage}</span>"
+		}
+		
 		// Update option
 		paragraph "<span style='color:green;font-weight:bold;'>Update HPM from GitHub</span>"
-		input "btnCheckHpmUpdates", "button", title: "Check Latest & Update", width: 3
-		paragraph "<span style='color:gray;font-size:10px;'>Note: Self-update may fail due to Hubitat constraints. If update fails, update manually from GitHub.</span>"
+		input "btnCheckHpmUpdates", "button", title: "Update Now", width: 3
 		paragraph "<a href='https://raw.githubusercontent.com/${GITHUB_REPO}/main/apps/Package_Manager.groovy' target='_blank' style='color:#1A77C9;font-weight:bold;'>Manual Download</a>"
 		
 		if (state.hpmUpdateResult == "success") {
