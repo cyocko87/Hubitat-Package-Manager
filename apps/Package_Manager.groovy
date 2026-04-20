@@ -299,8 +299,8 @@ def appButtonHandler(btn) {
 									path: "/app/list",
 									textParser: true,
 									ignoreSSLIssues: true
-								]) { resp ->
-									def cookie = resp?.headers?.'Set-Cookie'?.split(';')?.getAt(0)
+								]) { listResp ->
+									def cookie = listResp?.headers?.'Set-Cookie'?.split(';')?.getAt(0)
 									if (cookie) {
 										state.cookie = cookie
 										log.info "HPM: Got session cookie: ${cookie}"
