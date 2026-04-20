@@ -276,14 +276,17 @@ def appButtonHandler(btn) {
 			break
 		case "btnUpdateHpm":
 			try {
+				state.hpmUpdateProgress = "downloading"
 				log.info "HPM: Starting update download..."
 				def latestCode = downloadFile("https://raw.githubusercontent.com/${GITHUB_REPO}/main/apps/Package_Manager.groovy")
 				log.info "HPM: Downloaded code length: ${latestCode?.length()}"
 				if (latestCode) {
+					state.hpmUpdateProgress = "upgrading"
 					def appId = app.id
 					log.info "HPM: Upgrading app ${appId}..."
 					def updateResult = upgradeApp(appId, latestCode)
 					log.info "HPM: Update result: ${updateResult}"
+					state.hpmUpdateProgress = "done"
 					if (updateResult) {
 						state.hpmUpdateResult = "success"
 					} else {
@@ -291,11 +294,13 @@ def appButtonHandler(btn) {
 						state.hpmUpdateError = "Update API returned failure"
 					}
 				} else {
+					state.hpmUpdateProgress = "error"
 					state.hpmUpdateResult = "error"
 					state.hpmUpdateError = "Failed to download code"
 				}
 			} catch (Exception e) {
 				log.error "HPM: Update failed: ${e.message}"
+				state.hpmUpdateProgress = "error"
 				state.hpmUpdateResult = "error"
 				state.hpmUpdateError = e.message
 			}
@@ -5080,7 +5085,15 @@ def displayHeader(def txt = '') {
 		} else if (state.hpmUpdateCheck == "done") {
 			if (state.hpmLatestCommit != state.hpmCurrentCommit) {
 				paragraph "<span style='color:green;font-weight:bold;'>✓ New version available</span><br>Latest commit: <code>${state.hpmLatestCommit.take(8)}</code><br>${state.hpmLatestMessage}"
-				input "btnUpdateHpm", "button", title: "Update Now", width: 3
+				if (state.hpmUpdateProgress == "downloading") {
+					paragraph "<span style='color:blue;'>Downloading update...</span>"
+				} else if (state.hpmUpdateProgress == "upgrading") {
+					paragraph "<span style='color:blue;'>Upgrading app...</span>"
+				} else if (state.hpmUpdateProgress == "done") {
+					paragraph "<span style='color:blue;'>Update complete</span>"
+				} else {
+					input "btnUpdateHpm", "button", title: "Update Now", width: 3
+				}
 			} else {
 				paragraph "<span style='color:green;'>✓ You are running the latest version</span><br>Commit: <code>${state.hpmCurrentCommit.take(8)}</code>"
 			}
