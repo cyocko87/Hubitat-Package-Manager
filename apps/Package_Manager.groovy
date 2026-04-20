@@ -288,6 +288,15 @@ def appButtonHandler(btn) {
 				def latestCode = downloadFile("https://raw.githubusercontent.com/${GITHUB_REPO}/main/apps/Package_Manager.groovy")
 				log.info "HPM: Downloaded code length: ${latestCode?.length()}"
 				if (latestCode) {
+					// Basic validation - check if code contains expected markers
+					if (!latestCode.contains("definition(") || !latestCode.contains("preferences {")) {
+						log.error "HPM: Downloaded code appears invalid - missing required Groovy structure"
+						state.hpmUpdateProgress = null
+						state.hpmUpdateResult = "error"
+						state.hpmUpdateError = "Downloaded code appears invalid"
+						break
+					}
+					
 					state.hpmUpdateProgress = "upgrading"
 					def appId = app.id
 					log.info "HPM: Upgrading app ${appId}..."
@@ -299,7 +308,7 @@ def appButtonHandler(btn) {
 					} else {
 						state.hpmUpdateProgress = null  // Clear progress so button shows again
 						state.hpmUpdateResult = "error"
-						state.hpmUpdateError = "Update API returned failure"
+						state.hpmUpdateError = "Update API returned failure - try manual update from GitHub"
 					}
 				} else {
 					state.hpmUpdateProgress = null  // Clear progress so button shows again
