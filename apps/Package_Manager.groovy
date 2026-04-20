@@ -292,6 +292,15 @@ def appButtonHandler(btn) {
 							def appId = app.id
 							log.info "HPM: Upgrading app ${appId}..."
 							
+							// Login to establish session for getAppVersion
+							if (!login()) {
+								log.error "HPM: Failed to login to hub"
+								state.hpmUpdateProgress = null
+								state.hpmUpdateResult = "error"
+								state.hpmUpdateError = "Failed to login to hub - check Hub Security settings"
+								return
+							}
+							
 							def appVersion = getAppVersion(appId)
 							log.info "HPM: Using version ${appVersion} for update"
 							
